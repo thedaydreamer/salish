@@ -55,6 +55,11 @@ abstract public class DexBufferVisitor {
 	private List<MethodListener> methodListeners = new LinkedList<MethodListener>();
 
 	/**
+	 * ClassDef listeners
+	 */
+	private List<ClassDefListener> classDefListeners = new LinkedList<ClassDefListener>();
+
+	/**
 	 * Creates a visitor that will process a DEX buffer.
 	 * 
 	 * @param buffer
@@ -110,6 +115,25 @@ abstract public class DexBufferVisitor {
 	}
 
 	/**
+	 * Registers a ClassDef listener. This function has no effect if the
+	 * specified listener is already registered.
+	 * 
+	 * @param listener
+	 *            the listener to register.
+	 * @since 1.0
+	 */
+	public void registerListener(ClassDefListener listener) {
+		synchronized (ClassDefListener.class) {
+
+			if (listener == null)
+				return;
+
+			if (!classDefListeners.contains(listener))
+				classDefListeners.add(listener);
+		}
+	}
+
+	/**
 	 * Unregisters a method listener. This function has no effect if listener is
 	 * null or if it's not currently registered.
 	 * 
@@ -126,6 +150,7 @@ abstract public class DexBufferVisitor {
 
 			if (!methodListeners.contains(listener))
 				return null;
+
 			methodListeners.remove(listener);
 
 		}
@@ -134,9 +159,36 @@ abstract public class DexBufferVisitor {
 	}
 
 	/**
+	 * Unregisters a class def listener. This function has no effect if listener
+	 * is null or if it's not currently registered.
+	 * 
+	 * @param listener
+	 *            the listener to un-register.
+	 * @return the same parameter passed to the call.
+	 * @since 1.0
+	 */
+	public ClassDefListener unregisterListener(ClassDefListener listener) {
+
+		synchronized (ClassDefListener.class) {
+
+			if (listener == null)
+				return null;
+
+			if (!classDefListeners.contains(listener))
+				return null;
+
+			classDefListeners.remove(listener);
+
+		}
+
+		return listener;
+
+	}
+
+	/**
 	 * Visits all the methods in the DEX file. The number of methods visited are
 	 * returned. This mehthod does nothing if no {@link MethodListener
-	 * MethodListener} objects are registers.
+	 * MethodListener} objects are registered.
 	 * 
 	 * @return the number of methods visited by at least one visitor.
 	 * @since 1.0
@@ -162,7 +214,7 @@ abstract public class DexBufferVisitor {
 
 			/*
 			 * Fill a list with listeners where shouldVisit(ClassDef) return
-			 * true.
+			 * true. Changes for every class.
 			 */
 			List<MethodListener> activeListeners = new LinkedList<MethodListener>();
 
@@ -194,6 +246,39 @@ abstract public class DexBufferVisitor {
 
 			}
 
+		}
+
+		return result;
+
+	}
+
+	/**
+	 * Visits all the class definitions in the DEX file. The number of class
+	 * definitions visited are returned. This method does nothing if no
+	 * {@link ClassDefListener ClassDefListener} objects are registered.
+	 * 
+	 * @return the number of methods visited by at least one visitor.
+	 * @since 1.0
+	 */
+	public int visitClasses() {
+
+		if (classDefListeners.size() == 0)
+			return 0;
+
+		int result = 0;
+
+		Iterable<ClassDef> cIterable = buffer.classDefs();
+
+		for (Iterator<ClassDef> iter = cIterable.iterator(); iter.hasNext();) {
+
+			ClassDef cDef = iter.next();
+			for (ClassDefListener listener : classDefListeners) {
+				if (listener.shouldVisit(cDef)) {
+					listener.onClassDefFound(cDef);
+					result++;
+				}
+
+			}
 		}
 
 		return result;
