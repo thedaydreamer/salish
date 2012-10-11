@@ -25,6 +25,9 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
+import schilling.richard.dalvik.vm.InstructionList;
+import schilling.richard.finnr.Enhance;
+import android.util.Log;
 import android.util.SparseArray;
 
 import com.android.dx.io.ClassData;
@@ -59,6 +62,13 @@ public class DexBufferVisitor {
 	 * ClassDef listeners
 	 */
 	private List<ClassDefListener> classDefListeners = new LinkedList<ClassDefListener>();
+
+	/**
+	 * Code listeners. These listeners are only called my visitMethods if a
+	 * methodListener's shouldVisit functions return true.
+	 * 
+	 */
+	private List<MethodCodeListener> codeListeners = new LinkedList<MethodCodeListener>();
 
 	/**
 	 * Creates a visitor that will process a DEX buffer.
@@ -97,21 +107,21 @@ public class DexBufferVisitor {
 	}
 
 	/**
-	 * Registers a method listener. This function has no effect if the specified
+	 * Registers a code listener. This function has no effect if the specified
 	 * listener is already registered.
 	 * 
 	 * @param listener
 	 *            the listener to register.
 	 * @since 1.0
 	 */
-	public void registerListener(MethodListener listener) {
-		synchronized (MethodListener.class) {
+	public void registerListener(MethodCodeListener listener) {
+		synchronized (MethodCodeListener.class) {
 
 			if (listener == null)
 				return;
 
-			if (!methodListeners.contains(listener))
-				methodListeners.add(listener);
+			if (!codeListeners.contains(listener))
+				codeListeners.add(listener);
 		}
 	}
 
@@ -135,6 +145,25 @@ public class DexBufferVisitor {
 	}
 
 	/**
+	 * Registers a method listener. This function has no effect if the specified
+	 * listener is already registered.
+	 * 
+	 * @param listener
+	 *            the listener to register.
+	 * @since 1.0
+	 */
+	public void registerListener(MethodListener listener) {
+		synchronized (MethodListener.class) {
+
+			if (listener == null)
+				return;
+
+			if (!methodListeners.contains(listener))
+				methodListeners.add(listener);
+		}
+	}
+
+	/**
 	 * Unregisters a method listener. This function has no effect if listener is
 	 * null or if it's not currently registered.
 	 * 
@@ -153,6 +182,31 @@ public class DexBufferVisitor {
 				return null;
 
 			methodListeners.remove(listener);
+
+		}
+		return listener;
+
+	}
+
+	/**
+	 * Unregisters a method code listener. This function has no effect if
+	 * listener is null or if it's not currently registered.
+	 * 
+	 * @param listener
+	 *            the listener to un-register.
+	 * @return the same parameter passed to the call.
+	 * @since 1.0
+	 */
+	public MethodCodeListener unregisterListener(MethodCodeListener listener) {
+
+		synchronized (MethodCodeListener.class) {
+			if (listener == null)
+				return null;
+
+			if (!codeListeners.contains(listener))
+				return null;
+
+			codeListeners.remove(listener);
 
 		}
 		return listener;
@@ -200,7 +254,7 @@ public class DexBufferVisitor {
 			return 0;
 
 		int result = 0;
-
+		List<MethodListener> activeListeners = new LinkedList<MethodListener>();
 		SparseArray<ClassData> classData = buffer.classData();
 		Iterable<ClassDef> cIterable = buffer.classDefs();
 		List<MethodId> methods = buffer.methodIds();
@@ -213,11 +267,13 @@ public class DexBufferVisitor {
 			if (dataOffset == 0)
 				continue;
 
+			String className = cDef.getSignature();
+
 			/*
 			 * Fill a list with listeners where shouldVisit(ClassDef) return
 			 * true. Changes for every class.
 			 */
-			List<MethodListener> activeListeners = new LinkedList<MethodListener>();
+			activeListeners.clear();
 
 			for (MethodListener listener : methodListeners) {
 				if (listener.shouldVisit(cDef))
@@ -226,6 +282,9 @@ public class DexBufferVisitor {
 
 			if (activeListeners.size() == 0)
 				continue;
+
+			if (className.equals("Lcom/rovio/ka3d/GLSurfaceView$Renderer;"))
+				Log.d(Enhance.LOG_TAG, "breakpoint");
 
 			ClassData cData = classData.get(dataOffset);
 			Method[] classMethods = cData.allMethods();
@@ -241,9 +300,26 @@ public class DexBufferVisitor {
 						found = true;
 						listener.onMethodFound(cDef, m, mId, pId);
 
-						if (m.getCodeOffset() > 0)
-							listener.onCodeFound(cDef, m, mId, pId,
-									buffer.readCode(m));
+						if (m.getCodeOffset() > 0 && codeListeners.size() > 0) {
+							Code code = buffer.readCode(m);
+							for (MethodCodeListener mcListener : codeListeners) {
+								InstructionList iList = code.decodeAllAsList();
+								mcListener.onCodeFound(buffer, cDef, m, mId,
+										pId, code, iList);
+								if (mcListener.doIterateCode) {
+
+									for (int i = 0; i < iList.size(); i++) {
+
+										mcListener.onInstructionFound(cDef, m,
+												mId, pId, iList.keyAt(i),
+												iList.valueAt(i));
+
+									}
+								}
+								mcListener.onCodeVisited(buffer, cDef, m, mId,
+										pId, code, iList);
+							}
+						}
 
 					}
 				}

@@ -88,7 +88,6 @@ public abstract class MethodListener {
 	public abstract void onMethodFound(ClassDef cDef, Method method,
 			MethodId mId, ProtoId pId);
 
-	public abstract void onCodeFound(ClassDef cDef, Method method,
-			MethodId mId, ProtoId pId, Code methodCode);
+	
 
 }
