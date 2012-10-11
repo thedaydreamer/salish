@@ -20,10 +20,11 @@
 
 package org.gnu.salish.visitors;
 
+import com.android.dx.io.ClassData.Method;
 import com.android.dx.io.ClassDef;
+import com.android.dx.io.Code;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
-import com.android.dx.io.ClassData.Method;
 
 /**
  * A listener that can be registered with {@link DexBufferVisitor
@@ -37,7 +38,7 @@ import com.android.dx.io.ClassData.Method;
  * 
  */
 public abstract class MethodListener {
-	
+
 	/**
 	 * Called whenever a new method is found so that it can be determined
 	 * whether or not the method should be passed to onMethodFound.
@@ -59,6 +60,10 @@ public abstract class MethodListener {
 	 * Called whenever a new class is found so that it can be determined whether
 	 * or not the class should be skipped. If this method returns false, then
 	 * the class will be skipped for this listener entirely.
+	 * 
+	 * <p>
+	 * {@code ClassDef.getClassDataOffset()} code offset will have already been
+	 * checked and is guaranteed to be > 0.
 	 * 
 	 * @param cDef
 	 *            the class definition to check.
@@ -82,5 +87,8 @@ public abstract class MethodListener {
 	 */
 	public abstract void onMethodFound(ClassDef cDef, Method method,
 			MethodId mId, ProtoId pId);
+
+	public abstract void onCodeFound(ClassDef cDef, Method method,
+			MethodId mId, ProtoId pId, Code methodCode);
 
 }

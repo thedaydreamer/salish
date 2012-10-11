@@ -30,6 +30,7 @@ import android.util.SparseArray;
 import com.android.dx.io.ClassData;
 import com.android.dx.io.ClassData.Method;
 import com.android.dx.io.ClassDef;
+import com.android.dx.io.Code;
 import com.android.dx.io.DexBuffer;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
@@ -42,7 +43,7 @@ import com.android.dx.io.ProtoId;
  * @since 1.0
  * 
  */
-abstract public class DexBufferVisitor {
+public class DexBufferVisitor {
 
 	/**
 	 * The DEX buffer that is being visited.
@@ -239,6 +240,11 @@ abstract public class DexBufferVisitor {
 					if (listener.shouldVisit(cDef, m, mId, pId)) {
 						found = true;
 						listener.onMethodFound(cDef, m, mId, pId);
+
+						if (m.getCodeOffset() > 0)
+							listener.onCodeFound(cDef, m, mId, pId,
+									buffer.readCode(m));
+
 					}
 				}
 				if (found)
