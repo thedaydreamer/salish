@@ -56,19 +56,7 @@ public class DexBufferVisitor {
 	/**
 	 * Method listeners
 	 */
-	private List<MethodListener> methodListeners = new LinkedList<MethodListener>();
-
-	/**
-	 * ClassDef listeners
-	 */
-	private List<ClassDefListener> classDefListeners = new LinkedList<ClassDefListener>();
-
-	/**
-	 * Code listeners. These listeners are only called my visitMethods if a
-	 * methodListener's shouldVisit functions return true.
-	 * 
-	 */
-	private List<MethodCodeListener> codeListeners = new LinkedList<MethodCodeListener>();
+	private List<DexFileListener> listeners = new LinkedList<DexFileListener>();
 
 	/**
 	 * Creates a visitor that will process a DEX buffer.
@@ -114,103 +102,15 @@ public class DexBufferVisitor {
 	 *            the listener to register.
 	 * @since 1.0
 	 */
-	public void registerListener(MethodCodeListener listener) {
-		synchronized (MethodCodeListener.class) {
+	public void registerListener(DexFileListener listener) {
+		synchronized (DexFileListener.class) {
 
 			if (listener == null)
 				return;
 
-			if (!codeListeners.contains(listener))
-				codeListeners.add(listener);
+			if (!listeners.contains(listener))
+				listeners.add(listener);
 		}
-	}
-
-	/**
-	 * Registers a ClassDef listener. This function has no effect if the
-	 * specified listener is already registered.
-	 * 
-	 * @param listener
-	 *            the listener to register.
-	 * @since 1.0
-	 */
-	public void registerListener(ClassDefListener listener) {
-		synchronized (ClassDefListener.class) {
-
-			if (listener == null)
-				return;
-
-			if (!classDefListeners.contains(listener))
-				classDefListeners.add(listener);
-		}
-	}
-
-	/**
-	 * Registers a method listener. This function has no effect if the specified
-	 * listener is already registered.
-	 * 
-	 * @param listener
-	 *            the listener to register.
-	 * @since 1.0
-	 */
-	public void registerListener(MethodListener listener) {
-		synchronized (MethodListener.class) {
-
-			if (listener == null)
-				return;
-
-			if (!methodListeners.contains(listener))
-				methodListeners.add(listener);
-		}
-	}
-
-	/**
-	 * Unregisters a method listener. This function has no effect if listener is
-	 * null or if it's not currently registered.
-	 * 
-	 * @param listener
-	 *            the listener to un-register.
-	 * @return the same parameter passed to the call.
-	 * @since 1.0
-	 */
-	public MethodListener unregisterListener(MethodListener listener) {
-
-		synchronized (MethodListener.class) {
-			if (listener == null)
-				return null;
-
-			if (!methodListeners.contains(listener))
-				return null;
-
-			methodListeners.remove(listener);
-
-		}
-		return listener;
-
-	}
-
-	/**
-	 * Unregisters a method code listener. This function has no effect if
-	 * listener is null or if it's not currently registered.
-	 * 
-	 * @param listener
-	 *            the listener to un-register.
-	 * @return the same parameter passed to the call.
-	 * @since 1.0
-	 */
-	public MethodCodeListener unregisterListener(MethodCodeListener listener) {
-
-		synchronized (MethodCodeListener.class) {
-			if (listener == null)
-				return null;
-
-			if (!codeListeners.contains(listener))
-				return null;
-
-			codeListeners.remove(listener);
-
-		}
-		return listener;
-
 	}
 
 	/**
@@ -222,21 +122,16 @@ public class DexBufferVisitor {
 	 * @return the same parameter passed to the call.
 	 * @since 1.0
 	 */
-	public ClassDefListener unregisterListener(ClassDefListener listener) {
+	public boolean unregisterListener(DexFileListener listener) {
 
-		synchronized (ClassDefListener.class) {
+		synchronized (DexFileListener.class) {
 
 			if (listener == null)
-				return null;
+				return false;
 
-			if (!classDefListeners.contains(listener))
-				return null;
-
-			classDefListeners.remove(listener);
+			return listeners.remove(listener);
 
 		}
-
-		return listener;
 
 	}
 
@@ -248,13 +143,13 @@ public class DexBufferVisitor {
 	 * @return the number of methods visited by at least one visitor.
 	 * @since 1.0
 	 */
-	public int visitMethods() {
+	public int visit() {
 
-		if (methodListeners.size() == 0)
+		if (listeners.size() == 0)
 			return 0;
 
 		int result = 0;
-		List<MethodListener> activeListeners = new LinkedList<MethodListener>();
+		List<DexFileListener> activeListeners = new LinkedList<DexFileListener>();
 		SparseArray<ClassData> classData = buffer.classData();
 		Iterable<ClassDef> cIterable = buffer.classDefs();
 		List<MethodId> methods = buffer.methodIds();
@@ -264,9 +159,6 @@ public class DexBufferVisitor {
 			ClassDef cDef = iter.next();
 			int dataOffset = cDef.getClassDataOffset();
 
-			if (dataOffset == 0)
-				continue;
-
 			String className = cDef.getSignature();
 
 			/*
@@ -275,50 +167,59 @@ public class DexBufferVisitor {
 			 */
 			activeListeners.clear();
 
-			for (MethodListener listener : methodListeners) {
-				if (listener.shouldVisit(cDef))
+			for (DexFileListener listener : listeners) {
+				if (listener.shouldVisit(cDef)) {
 					activeListeners.add(listener);
+					listener.onClassDefFound(cDef);
+				}
 			}
 
 			if (activeListeners.size() == 0)
 				continue;
 
-			if (className.equals("Lcom/rovio/ka3d/GLSurfaceView$Renderer;"))
-				Log.d(Enhance.LOG_TAG, "breakpoint");
+			if (dataOffset == 0)
+				continue;
 
 			ClassData cData = classData.get(dataOffset);
+
 			Method[] classMethods = cData.allMethods();
 			for (Method m : classMethods) {
+
+				// TODO add shouldVisit(Method)
 
 				int mIdx = m.getMethodIndex();
 				MethodId mId = methods.get(mIdx);
 				ProtoId pId = protoIds.get(mId.getProtoIndex());
 
 				boolean found = false;
-				for (MethodListener listener : activeListeners) {
+				for (DexFileListener listener : activeListeners) {
 					if (listener.shouldVisit(cDef, m, mId, pId)) {
 						found = true;
 						listener.onMethodFound(cDef, m, mId, pId);
 
-						if (m.getCodeOffset() > 0 && codeListeners.size() > 0) {
-							Code code = buffer.readCode(m);
-							for (MethodCodeListener mcListener : codeListeners) {
-								InstructionList iList = code.decodeAllAsList();
-								mcListener.onCodeFound(buffer, cDef, m, mId,
-										pId, code, iList);
-								if (mcListener.doIterateCode) {
+						if (m.getCodeOffset() == 0)
+							continue;
 
-									for (int i = 0; i < iList.size(); i++) {
+						Code code = buffer.readCode(m);
+						if (listener.shouldVisit(cDef, m, mId, pId, code)) {
 
-										mcListener.onInstructionFound(cDef, m,
-												mId, pId, iList.keyAt(i),
-												iList.valueAt(i));
+							InstructionList iList = code.decodeAllAsList();
+							listener.onCodeFound(buffer, cDef, m, mId, pId,
+									code, iList);
+							if (listener.doIterateCode()) {
 
-									}
+								for (int i = 0; i < iList.size(); i++) {
+
+									listener.onInstructionFound(cDef, m, mId,
+											pId, iList.keyAt(i),
+											iList.valueAt(i));
+
 								}
-								mcListener.onCodeVisited(buffer, cDef, m, mId,
+
+								listener.onCodeVisited(buffer, cDef, m, mId,
 										pId, code, iList);
 							}
+
 						}
 
 					}
@@ -334,36 +235,4 @@ public class DexBufferVisitor {
 
 	}
 
-	/**
-	 * Visits all the class definitions in the DEX file. The number of class
-	 * definitions visited are returned. This method does nothing if no
-	 * {@link ClassDefListener ClassDefListener} objects are registered.
-	 * 
-	 * @return the number of methods visited by at least one visitor.
-	 * @since 1.0
-	 */
-	public int visitClasses() {
-
-		if (classDefListeners.size() == 0)
-			return 0;
-
-		int result = 0;
-
-		Iterable<ClassDef> cIterable = buffer.classDefs();
-
-		for (Iterator<ClassDef> iter = cIterable.iterator(); iter.hasNext();) {
-
-			ClassDef cDef = iter.next();
-			for (ClassDefListener listener : classDefListeners) {
-				if (listener.shouldVisit(cDef)) {
-					listener.onClassDefFound(cDef);
-					result++;
-				}
-
-			}
-		}
-
-		return result;
-
-	}
 }
