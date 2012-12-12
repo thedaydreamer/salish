@@ -26,8 +26,6 @@ import java.util.LinkedList;
 import java.util.List;
 
 import schilling.richard.dalvik.vm.InstructionList;
-import schilling.richard.finnr.Enhance;
-import android.util.Log;
 import android.util.SparseArray;
 
 import com.android.dx.io.ClassData;
@@ -135,15 +133,25 @@ public class DexBufferVisitor {
 
 	}
 
+	private void throwIfInterrupted() throws InterruptedException {
+
+		if (Thread.interrupted())
+			throw new InterruptedException("processing cancelled");
+
+	}
+
 	/**
-	 * Visits all the methods in the DEX file. The number of methods visited are
-	 * returned. This mehthod does nothing if no {@link MethodListener
-	 * MethodListener} objects are registered.
+	 * Visits all the classes defined in the DEX file, their methods and their
+	 * code. The number of classes visited are returned, which may be less than
+	 * the number of ClassDef items in the file (See
+	 * DexFileListener.shouldVisit(ClassDef). This method does nothing if no
+	 * {@link DexFileListener DexFileListener} objects are registered.
 	 * 
 	 * @return the number of methods visited by at least one visitor.
+	 * @throws InterruptedException
 	 * @since 1.0
 	 */
-	public int visit() {
+	public int visitClasses() throws InterruptedException {
 
 		if (listeners.size() == 0)
 			return 0;
@@ -156,10 +164,11 @@ public class DexBufferVisitor {
 		List<ProtoId> protoIds = buffer.protoIds();
 
 		for (Iterator<ClassDef> iter = cIterable.iterator(); iter.hasNext();) {
+
+			throwIfInterrupted();
+
 			ClassDef cDef = iter.next();
 			int dataOffset = cDef.getClassDataOffset();
-
-			String className = cDef.getSignature();
 
 			/*
 			 * Fill a list with listeners where shouldVisit(ClassDef) return
@@ -168,9 +177,11 @@ public class DexBufferVisitor {
 			activeListeners.clear();
 
 			for (DexFileListener listener : listeners) {
+				throwIfInterrupted();
 				if (listener.shouldVisit(cDef)) {
 					activeListeners.add(listener);
 					listener.onClassDefFound(cDef);
+					result++;
 				}
 			}
 
@@ -185,16 +196,19 @@ public class DexBufferVisitor {
 			Method[] classMethods = cData.allMethods();
 			for (Method m : classMethods) {
 
+				throwIfInterrupted();
+
 				// TODO add shouldVisit(Method)
 
 				int mIdx = m.getMethodIndex();
 				MethodId mId = methods.get(mIdx);
 				ProtoId pId = protoIds.get(mId.getProtoIndex());
 
-				boolean found = false;
 				for (DexFileListener listener : activeListeners) {
 					if (listener.shouldVisit(cDef, m, mId, pId)) {
-						found = true;
+
+						throwIfInterrupted();
+
 						listener.onMethodFound(cDef, m, mId, pId);
 
 						if (m.getCodeOffset() == 0)
@@ -203,10 +217,14 @@ public class DexBufferVisitor {
 						Code code = buffer.readCode(m);
 						if (listener.shouldVisit(cDef, m, mId, pId, code)) {
 
+							throwIfInterrupted();
+
 							InstructionList iList = code.decodeAllAsList();
 							listener.onCodeFound(buffer, cDef, m, mId, pId,
 									code, iList);
 							if (listener.doIterateCode()) {
+
+								throwIfInterrupted();
 
 								for (int i = 0; i < iList.size(); i++) {
 
@@ -224,8 +242,6 @@ public class DexBufferVisitor {
 
 					}
 				}
-				if (found)
-					result++;
 
 			}
 
@@ -233,6 +249,34 @@ public class DexBufferVisitor {
 
 		return result;
 
+	}
+
+	/**
+	 * Encoded methods are read in from Class Data. MethodIdentifiers don't have
+	 * to be. So while each encoded method (Method) will have a MethodId, only
+	 * some MethodId items will have an assocaited ClassData.Method.
+	 * 
+	 * @throws InterruptedException
+	 */
+	public int visitMethodIdentifiers() throws InterruptedException {
+		int result = 0;
+
+		if (listeners.size() == 0)
+			return result;
+
+		List<MethodId> methodIds = buffer.methodIds();
+
+		for (MethodId mId : methodIds) {
+			for (DexFileListener listener : listeners) {
+				throwIfInterrupted();
+				if (listener.shouldVisit(mId)) {
+					listener.onMethodIdFound(mId);
+					result++;
+				}
+			}
+		}
+
+		return result;
 	}
 
 }
