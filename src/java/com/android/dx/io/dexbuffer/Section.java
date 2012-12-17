@@ -91,15 +91,15 @@ public abstract class Section implements ByteInput, ByteOutput {
      */
     public abstract void alignToFourBytes();
 
-    public int readUleb128() {
+    public final int readUleb128() {
         return Leb128Utils.readUnsignedLeb128(this);
     }
 
-    public int readSleb128() {
+    public final int readSleb128() {
         return Leb128Utils.readSignedLeb128(this);
     }
 
-    public TypeList readTypeList() {
+    public final TypeList readTypeList() {
         int size = readInt();
         short[] types = new short[size];
         for (int i = 0; i < size; i++) {
@@ -111,7 +111,7 @@ public abstract class Section implements ByteInput, ByteOutput {
 
     public abstract void setPosition(int position);
 
-    public String readString() {
+    public final String readString() {
         int offset = readInt();
         int savedPosition = getPosition();
         setPosition(offset);
@@ -131,7 +131,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         }
     }
 
-    public FieldId readFieldId() {
+    public final FieldId readFieldId() {
         int declaringClassIndex = readUnsignedShort();
         int typeIndex = readUnsignedShort();
         int nameIndex = readInt();
@@ -139,7 +139,7 @@ public abstract class Section implements ByteInput, ByteOutput {
                 nameIndex);
     }
 
-    public MethodId readMethodId() {
+    public final MethodId readMethodId() {
         int declaringClassIndex = readUnsignedShort();
         int protoIndex = readUnsignedShort();
         int nameIndex = readInt();
@@ -147,7 +147,7 @@ public abstract class Section implements ByteInput, ByteOutput {
                 protoIndex, nameIndex);
     }
 
-    public ProtoId readProtoId() {
+    public final ProtoId readProtoId() {
         int shortyIndex = readInt();
         int returnTypeIndex = readInt();
         int parametersOffset = readInt();
@@ -155,7 +155,7 @@ public abstract class Section implements ByteInput, ByteOutput {
                 parametersOffset);
     }
 
-    public ClassDef readClassDef() {
+    public final ClassDef readClassDef() {
         int offset = getPosition();
         int type = readInt();
         int accessFlags = readInt();
@@ -176,7 +176,7 @@ public abstract class Section implements ByteInput, ByteOutput {
      * 
      * @return A method code item.
      */
-    public Code readCode() {
+    public final Code readCode() {
         int start = getPosition();
         int registersSize = readUnsignedShort();
         int insSize = readUnsignedShort();
@@ -219,7 +219,7 @@ public abstract class Section implements ByteInput, ByteOutput {
 
     }
 
-    public Code.CatchHandler readCatchHandler(int startPosition) {
+    public final Code.CatchHandler readCatchHandler(int startPosition) {
         List<String> types = buffer.typeNames();
         int size = readSleb128();
 
@@ -248,7 +248,7 @@ public abstract class Section implements ByteInput, ByteOutput {
 
     }
 
-    public ClassData readClassData() {
+    public final ClassData readClassData() {
         int staticFieldsSize = readUleb128();
         int instanceFieldsSize = readUleb128();
         int directMethodsSize = readUleb128();
@@ -265,7 +265,7 @@ public abstract class Section implements ByteInput, ByteOutput {
                 virtualMethods);
     }
 
-    public ClassData.Field[] readFields(FieldType fieldType, int count) {
+    public final ClassData.Field[] readFields(FieldType fieldType, int count) {
         ClassData.Field[] result = new ClassData.Field[count];
         int fieldIndex = 0;
         for (int i = 0; i < count; i++) {
@@ -277,7 +277,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         return result;
     }
 
-    public ClassData.Method[] readMethods(MethodType methodType, int count) {
+    public final ClassData.Method[] readMethods(MethodType methodType, int count) {
         ClassData.Method[] result = new ClassData.Method[count];
         int methodIndex = 0;
         for (int i = 0; i < count; i++) {
@@ -292,7 +292,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         return result;
     }
 
-    public Annotation readAnnotation() {
+    public final Annotation readAnnotation() {
         byte visibility = readByte();
         int typeIndex = readUleb128();
         int size = readUleb128();
@@ -312,7 +312,7 @@ public abstract class Section implements ByteInput, ByteOutput {
      * @return a list of Annotation items.
      * @author coderroadie
      */
-    public List<Annotation> readAnnotationSet() {
+    public final List<Annotation> readAnnotationSet() {
         List<Annotation> result = new LinkedList<Annotation>();
 
         int setSz = readInt();
@@ -327,7 +327,7 @@ public abstract class Section implements ByteInput, ByteOutput {
 
     }
 
-    public EncodedValue readEncodedValue() {
+    public final EncodedValue readEncodedValue() {
         int start = getPosition();
         new EncodedValueReader(this).readValue();
         int end = getPosition();
@@ -349,7 +349,7 @@ public abstract class Section implements ByteInput, ByteOutput {
      */
     public abstract void readByteArray(byte[] copied, int start2);
 
-    public EncodedValue readEncodedArray() {
+    public final EncodedValue readEncodedArray() {
         int start = getPosition();
         new EncodedValueReader(this).readArray();
         int end = getPosition();
@@ -359,14 +359,14 @@ public abstract class Section implements ByteInput, ByteOutput {
         return new EncodedValue(copied);
     }
 
-    public void ensureCapacity(int size) {
+    public final void ensureCapacity(int size) {
         if (getPosition() + size > limit) {
             throw new DexException("Section limit " + limit
                     + " exceeded by " + name);
         }
     }
 
-    public void assertFourByteAligned() {
+    public final void assertFourByteAligned() {
         if ((getPosition() & 3) != 0) {
             throw new IllegalStateException("Not four byte aligned!");
         }
@@ -380,7 +380,7 @@ public abstract class Section implements ByteInput, ByteOutput {
 
     public abstract void write(short s);
 
-    public void writeUnsignedShort(int i) {
+    public final void writeUnsignedShort(int i) {
         short s = (short) i;
         if (i != (s & 0xffff)) {
             throw new IllegalArgumentException(
@@ -391,13 +391,13 @@ public abstract class Section implements ByteInput, ByteOutput {
 
     public abstract void writeShort(short i);
 
-    public void write(short[] shorts) {
+    public final void write(short[] shorts) {
         for (short s : shorts) {
             write(s);
         }
     }
 
-    public void writeInt(int i) {
+    public final void writeInt(int i) {
         ensureCapacity(4);
         write((byte) i);
         write((byte) (i >>> 8));
@@ -405,7 +405,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         write((byte) (i >>> 24));
     }
 
-    public void writeUleb128(int i) {
+    public final void writeUleb128(int i) {
         try {
             Leb128Utils.writeUnsignedLeb128(this, i);
             ensureCapacity(0);
@@ -415,7 +415,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         }
     }
 
-    public void writeSleb128(int i) {
+    public final void writeSleb128(int i) {
         try {
             Leb128Utils.writeSignedLeb128(this, i);
             ensureCapacity(0);
@@ -425,7 +425,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         }
     }
 
-    public void writeStringData(String value) {
+    public final void writeStringData(String value) {
         try {
             int length = value.length();
             writeUleb128(length);
@@ -436,7 +436,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         }
     }
 
-    public void writeTypeList(TypeList typeList) {
+    public final void writeTypeList(TypeList typeList) {
         short[] types = typeList.getTypes();
         writeInt(types.length);
         for (short type : types) {
@@ -448,7 +448,7 @@ public abstract class Section implements ByteInput, ByteOutput {
     /**
      * Returns the number of bytes remaining in this section.
      */
-    public int remaining() {
+    public final int remaining() {
         return limit - getPosition();
     }
 

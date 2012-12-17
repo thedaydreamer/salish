@@ -3,23 +3,12 @@ package com.android.dx.io.dexbuffer;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
-import java.util.List;
-
-import android.util.SparseArray;
 
 import com.android.dx.dex.TableOfContents;
-import com.android.dx.io.ClassData;
-import com.android.dx.io.ClassData.Field;
-import com.android.dx.io.ClassData.Method;
-import com.android.dx.io.ClassDef;
-import com.android.dx.io.Code;
-import com.android.dx.io.FieldId;
-import com.android.dx.io.MethodId;
-import com.android.dx.io.ProtoId;
-import com.android.dx.merge.TypeList;
 
 /**
  * A DexBuffer backed by a random access file. Not to be confused with DexFile,
@@ -28,6 +17,7 @@ import com.android.dx.merge.TypeList;
  * @author rschilling
  */
 public class DexBufferRandomAccessFile extends DexBuffer {
+    public static final int BUFFER_SIZE = 1024;
     private RandomAccessFile file;
 
     public DexBufferRandomAccessFile(File f) {
@@ -40,24 +30,27 @@ public class DexBufferRandomAccessFile extends DexBuffer {
         }
     }
 
-    
-
     @Override
     public void writeTo(OutputStream out) throws IOException {
-        // TODO Auto-generated method stub
+        synchronized (file) {
+            byte[] buffer = new byte[BUFFER_SIZE];
+            long savedPos = file.getFilePointer();
+            file.seek(0);
+            int bytesread = 0;
+            while ((bytesread = file.read(buffer)) > 0) {
+                out.write(buffer, 0, bytesread);
+
+            }
+            file.seek(savedPos);
+        }
 
     }
 
     @Override
     public void writeTo(File dexOut) throws IOException {
-        // TODO Auto-generated method stub
 
-    }
+        writeTo(new FileOutputStream(dexOut));
 
-    @Override
-    public TableOfContents getTableOfContents() {
-        // TODO Auto-generated method stub
-        return null;
     }
 
     @Override

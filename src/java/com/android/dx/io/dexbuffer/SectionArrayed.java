@@ -1,11 +1,6 @@
 
 package com.android.dx.io.dexbuffer;
 
-import java.io.UTFDataFormatException;
-
-import com.android.dx.merge.TypeList;
-import com.android.dx.util.DexException;
-import com.android.dx.util.Mutf8;
 
 /**
  * A section of a DexBufferArray object.

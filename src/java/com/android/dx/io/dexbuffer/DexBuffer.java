@@ -640,7 +640,7 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
 
     }
 
-    public TableOfContents getTableOfContents() {
+    public final TableOfContents getTableOfContents() {
         return tableOfContents;
     }
 
