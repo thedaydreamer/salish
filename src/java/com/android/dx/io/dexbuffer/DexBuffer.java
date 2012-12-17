@@ -52,7 +52,6 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
      */
     public abstract SparseArray<ClassData> classData();
 
-    
     /**
      * Writes the binary representation of the dex buffer to an output stream.
      * 
@@ -490,5 +489,11 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
     public static int fourByteAlign(int position) {
         return (position + 3) & ~3;
     }
+
+    /**
+     * This function is called when no more sections are going to be added to
+     * this buffer. Performs cleanup.
+     */
+    public abstract void noMoreSections();
 
 }

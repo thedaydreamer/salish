@@ -85,7 +85,6 @@ public abstract class Section implements ByteInput, ByteOutput {
         return position;
     }
 
-
     public abstract int readInt();
 
     public abstract short readShort();
@@ -391,6 +390,8 @@ public abstract class Section implements ByteInput, ByteOutput {
     public abstract void write(short s);
 
     public abstract void writeUnsignedShort(int i);
+
+    public abstract void writeShort(short i);
 
     public void write(short[] shorts) {
         for (short s : shorts) {
