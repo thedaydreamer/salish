@@ -36,7 +36,7 @@ import com.android.dx.io.Code;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
 import com.android.dx.io.dexbuffer.DexBuffer;
-import com.android.dx.io.dexbuffer.DexBufferFactory;
+import com.android.dx.io.dexbuffer.DexBufferRandomAccessFile;
 
 /**
  * Visits artifacts in a dex buffer. The current version only visits methods.
@@ -86,7 +86,7 @@ public class DexBufferVisitor {
             throw new IllegalArgumentException(
                     "the file name must have a .dex extension");
 
-        this.buffer = DexBufferFactory.getDexBuffer(inputFile);
+        this.buffer = new DexBufferRandomAccessFile(inputFile);
     }
 
     /**

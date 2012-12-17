@@ -40,11 +40,7 @@ public class DexBufferRandomAccessFile extends DexBuffer {
         }
     }
 
-    @Override
-    public SparseArray<ClassData> classData() {
-        // TODO Auto-generated method stub
-        return null;
-    }
+    
 
     @Override
     public void writeTo(OutputStream out) throws IOException {
@@ -80,78 +76,6 @@ public class DexBufferRandomAccessFile extends DexBuffer {
     public int getLength() {
         // TODO Auto-generated method stub
         return 0;
-    }
-
-    @Override
-    public List<String> strings() {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public List<Integer> typeIds() {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public List<String> typeNames() {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public List<ProtoId> protoIds() {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public List<FieldId> fieldIds() {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public List<MethodId> methodIds() {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public List<ClassDef> classDefList() {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public ClassDef getDef(String type) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public TypeList readTypeList(int offset) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Code readCode(Method method) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Field getClassDataField(FieldId fId) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public MethodId findMethodId(String definingClassName, String methodName, int prototypeId) {
-        // TODO Auto-generated method stub
-        return null;
     }
 
     @Override
