@@ -19,8 +19,11 @@ package com.android.dx.io.dexbuffer;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Iterator;
 import java.util.List;
+import java.util.zip.Adler32;
 
 import schilling.richard.dalvik.vm.DvmGlobals;
 import schilling.richard.dalvik.vm.oo.util.ClassDefFactory;
@@ -42,6 +45,11 @@ import com.android.dx.merge.TypeList;
  * are unsigned.
  */
 public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
+
+    private static final int CHECKSUM_OFFSET = 8;
+    private static final int CHECKSUM_SIZE = 4;
+    private static final int SIGNATURE_OFFSET = CHECKSUM_OFFSET + CHECKSUM_SIZE;
+    private static final int SIGNATURE_SIZE = 20;
 
     public static final String LOG_TAG = "Finnr.DexBuffer";
 
@@ -496,4 +504,15 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
      */
     public abstract void noMoreSections();
 
+    /**
+     * Returns the signature of all but the first 32 bytes of {@code dex}. The
+     * first 32 bytes of dex files are not specified to be included in the
+     * signature.
+     */
+    public abstract byte[] computeSignature() throws IOException;
+
+    /**
+     * Returns the checksum of all but the first 12 bytes of {@code dex}.
+     */
+    public abstract int computeChecksum(DexBuffer dex) throws IOException;
 }

@@ -24,6 +24,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UTFDataFormatException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.AbstractList;
 import java.util.Collections;
 import java.util.Hashtable;
@@ -31,6 +33,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.zip.Adler32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -1811,6 +1814,37 @@ public final class DexBufferArray extends DexBuffer {
         }
 
         return null;
+    }
+    
+    /**
+     * Returns the signature of all but the first 32 bytes of {@code dex}. The
+     * first 32 bytes of dex files are not specified to be included in the
+     * signature.
+     */
+    public byte[] computeSignature(DexBuffer dex) throws IOException {
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-1");
+        } catch (NoSuchAlgorithmException e) {
+            throw new AssertionError();
+        }
+        int offset = SIGNATURE_OFFSET + SIGNATURE_SIZE;
+
+        byte[] bytes = dex.getBytes();
+        digest.update(bytes, offset, bytes.length - offset);
+        return digest.digest();
+    }
+
+    /**
+     * Returns the checksum of all but the first 12 bytes of {@code dex}.
+     */
+    public int computeChecksum(DexBuffer dex) throws IOException {
+        Adler32 adler32 = new Adler32();
+        int offset = CHECKSUM_OFFSET + CHECKSUM_SIZE;
+
+        byte[] bytes = dex.getBytes();
+        adler32.update(bytes, offset, bytes.length - offset);
+        return (int) adler32.getValue();
     }
 
 }
