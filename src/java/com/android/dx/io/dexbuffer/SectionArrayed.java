@@ -118,5 +118,30 @@ public class SectionArrayed extends Section {
         position += 2;
     }
 
-   
+    @Override
+    public void setPosition(int position) {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public void readByteArray(byte[] copied, int start2) {
+        // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public void write(byte b) {
+        ((DexBufferArray) buffer).data[position++] = b;
+
+    }
+
+    @Override
+    public void write(short s) {
+        // TODO Auto-generated method stub
+
+    }
+    
+    
+
 }

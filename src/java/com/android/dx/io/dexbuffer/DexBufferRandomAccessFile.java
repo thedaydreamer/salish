@@ -2,8 +2,10 @@
 package com.android.dx.io.dexbuffer;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.util.List;
 
 import android.util.SparseArray;
@@ -26,6 +28,17 @@ import com.android.dx.merge.TypeList;
  * @author rschilling
  */
 public class DexBufferRandomAccessFile extends DexBuffer {
+    private RandomAccessFile file;
+
+    public DexBufferRandomAccessFile(File f) {
+        try {
+            file = new RandomAccessFile(f, "rw");
+        } catch (FileNotFoundException e) {
+
+            throw new RuntimeException(e);
+
+        }
+    }
 
     @Override
     public SparseArray<ClassData> classData() {
@@ -36,13 +49,13 @@ public class DexBufferRandomAccessFile extends DexBuffer {
     @Override
     public void writeTo(OutputStream out) throws IOException {
         // TODO Auto-generated method stub
-        
+
     }
 
     @Override
     public void writeTo(File dexOut) throws IOException {
         // TODO Auto-generated method stub
-        
+
     }
 
     @Override
@@ -144,7 +157,7 @@ public class DexBufferRandomAccessFile extends DexBuffer {
     @Override
     public void noMoreSections() {
         // TODO Auto-generated method stub
-        
+
     }
 
     @Override
@@ -157,6 +170,12 @@ public class DexBufferRandomAccessFile extends DexBuffer {
     public int computeChecksum() throws IOException {
         // TODO Auto-generated method stub
         return 0;
+    }
+
+    @Override
+    public void calculateAdler32() {
+        // TODO Auto-generated method stub
+
     }
 
 }

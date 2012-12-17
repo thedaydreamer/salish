@@ -517,4 +517,5 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
      */
     public abstract int computeChecksum() throws IOException;
 
-    public abstract void calculateAdler32();}
+    public abstract void calculateAdler32();
+}
