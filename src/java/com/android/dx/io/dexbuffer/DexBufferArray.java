@@ -321,12 +321,12 @@ public final class DexBufferArray extends DexBuffer {
             throw new IllegalArgumentException("position=" + position
                     + " length=" + length);
         }
-        return new Section(position);
+        return new SectionArrayed(this, position);
     }
 
     public Section appendSection(int maxByteCount, String name) {
         int limit = fourByteAlign(length + maxByteCount);
-        Section result = new Section(name, length, limit);
+        Section result = new SectionArrayed(this, name, length, limit);
         length = limit;
         return result;
     }
@@ -355,7 +355,7 @@ public final class DexBufferArray extends DexBuffer {
             for (BufferedStringIdItem item : bsidList) {
                 List<AddressPointer> addresses = item.getAddressPointers();
                 for (AddressPointer address : addresses) {
-                    Section sec = new Section(address.getAddress());
+                    Section sec = new SectionArrayed(this, address.getAddress());
                     String s = sec.readString();
                     result.add(s);
 
@@ -765,7 +765,7 @@ public final class DexBufferArray extends DexBuffer {
                 types[i] = readShort();
             }
             alignToFourBytes();
-            return new TypeList(DexBuffer.this, types);
+            return new TypeList(DexBufferArray.this, types);
         }
 
         public String readString() {
@@ -792,7 +792,7 @@ public final class DexBufferArray extends DexBuffer {
             int declaringClassIndex = readUnsignedShort();
             int typeIndex = readUnsignedShort();
             int nameIndex = readInt();
-            return new FieldId(DexBuffer.this, declaringClassIndex, typeIndex,
+            return new FieldId(DexBufferArray.this, declaringClassIndex, typeIndex,
                     nameIndex);
         }
 
@@ -800,7 +800,7 @@ public final class DexBufferArray extends DexBuffer {
             int declaringClassIndex = readUnsignedShort();
             int protoIndex = readUnsignedShort();
             int nameIndex = readInt();
-            return new MethodId(DexBuffer.this, declaringClassIndex,
+            return new MethodId(DexBufferArray.this, declaringClassIndex,
                     protoIndex, nameIndex);
         }
 
@@ -808,7 +808,7 @@ public final class DexBufferArray extends DexBuffer {
             int shortyIndex = readInt();
             int returnTypeIndex = readInt();
             int parametersOffset = readInt();
-            return new ProtoId(DexBuffer.this, shortyIndex, returnTypeIndex,
+            return new ProtoId(DexBufferArray.this, shortyIndex, returnTypeIndex,
                     parametersOffset);
         }
 
@@ -822,7 +822,7 @@ public final class DexBufferArray extends DexBuffer {
             int annotationsOffset = readInt();
             int classDataOffset = readInt();
             int staticValuesOffset = readInt();
-            return new ClassDef(DexBuffer.this, offset, type, accessFlags,
+            return new ClassDef(DexBufferArray.this, offset, type, accessFlags,
                     supertype, interfacesOffset, sourceFileIndex,
                     annotationsOffset, classDataOffset, staticValuesOffset);
         }
@@ -898,9 +898,9 @@ public final class DexBufferArray extends DexBuffer {
             }
 
             int catchAllAddress = size <= 0 ? readUleb128() : -1;
-            Code.CatchHandler result = new Code.CatchHandler(typeIndexes,
+            Code.CatchHandler result = new Code.CatchHandler(handlerOffset,
+                    typeIndexes,
                     typeSignatures, addresses, catchAllAddress);
-            result.handlerOffset = handlerOffset;
 
             return result;
 
@@ -960,7 +960,7 @@ public final class DexBufferArray extends DexBuffer {
                 names[i] = readUleb128();
                 values[i] = readEncodedValue();
             }
-            return new Annotation(DexBuffer.this, visibility, typeIndex, names,
+            return new Annotation(DexBufferArray.this, visibility, typeIndex, names,
                     values);
         }
 
@@ -976,7 +976,7 @@ public final class DexBufferArray extends DexBuffer {
             int setSz = readInt();
             for (int i = 0; i < setSz; i++) {
                 int annotationOffset = readInt();
-                Section annotationSection = DexBuffer.this
+                Section annotationSection = DexBufferArray.this
                         .open(annotationOffset);
                 result.add(annotationSection.readAnnotation());
             }
@@ -1138,45 +1138,45 @@ public final class DexBufferArray extends DexBuffer {
 
         public int getInterfacesOffset() {
             // interfaces offset is 12 bytes beyond Offset.
-            Section sec = new Section(getOffset() + 12);
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset() + 12);
             return sec.readInt();
         }
 
         public void setInterfacesOffset(int offset) {
-            Section sec = new Section(getOffset() + 12);
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset() + 12);
             sec.writeInt(offset);
         }
 
         public int getAnnotationsOffset() {
             // interfaces offset is 20 bytes beyond Offset.
-            Section sec = new Section(getOffset() + 20);
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset() + 20);
             return sec.readInt();
         }
 
         public void setAnnotationsOffset(int offset) {
-            Section sec = new Section(getOffset() + 20);
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset() + 20);
             sec.writeInt(offset);
         }
 
         public int getClassDataOffset() {
             // interfaces offset is 24 bytes beyond Offset.
-            Section sec = new Section(getOffset() + 24);
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset() + 24);
             return sec.readInt();
         }
 
         public void setClassDataOffset(int offset) {
-            Section sec = new Section(getOffset() + 24);
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset() + 24);
             sec.writeInt(offset);
         }
 
         public int getStaticValuesOffset() {
             // interfaces offset is 24 bytes beyond Offset.
-            Section sec = new Section(getOffset() + 28);
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset() + 28);
             return sec.readInt();
         }
 
         public void setStaticValuesOffset(int offset) {
-            Section sec = new Section(getOffset() + 28);
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset() + 28);
             sec.writeInt(offset);
         }
 
@@ -1201,14 +1201,14 @@ public final class DexBufferArray extends DexBuffer {
 
         public int getParametersOffset() {
             // parameters offset is two integers beyond the offset.
-            Section sec = new Section(getOffset() + 8);
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset() + 8);
 
             return sec.readInt();
 
         }
 
         public void setParametersOffset(int pOffset) {
-            Section sec = new Section(getOffset() + 8);
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset() + 8);
 
             sec.writeInt(pOffset);
         }
@@ -1234,12 +1234,12 @@ public final class DexBufferArray extends DexBuffer {
         }
 
         public int getStringOffset() {
-            Section sec = new Section(getOffset());
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset());
             return sec.readInt();
         }
 
         public void setStringOffset(int offset) {
-            Section sec = new Section(offset);
+            Section sec = new SectionArrayed(DexBufferArray.this, offset);
             sec.writeInt(offset);
         }
 
@@ -1262,12 +1262,12 @@ public final class DexBufferArray extends DexBuffer {
         }
 
         public int getAnnotationsOffset() {
-            Section sec = new Section(getOffset());
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset());
             return sec.readInt();
         }
 
         public void setAnnotationsOffset(int offset) {
-            Section sec = new Section(getOffset());
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset());
             sec.writeInt(offset);
         }
 
@@ -1287,12 +1287,12 @@ public final class DexBufferArray extends DexBuffer {
         }
 
         public int getAnnotationOffset() {
-            Section sec = new Section(getOffset());
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset());
             return sec.readInt();
         }
 
         public void setAnnotationOffset(int offset) {
-            Section sec = new Section(getOffset());
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset());
             sec.writeInt(offset);
         }
 
@@ -1313,12 +1313,12 @@ public final class DexBufferArray extends DexBuffer {
 
         public int getDebugInfoOffset() {
             // debug info offset is four shorts after offset
-            Section sec = new Section(getOffset() + (SizeOf.USHORT * 4));
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset() + (SizeOf.USHORT * 4));
             return sec.readInt();
         }
 
         public void setDebugInfoOffset(int offset) {
-            Section sec = new Section(getOffset() + (SizeOf.USHORT * 4));
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset() + (SizeOf.USHORT * 4));
             sec.writeInt(offset);
         }
 
@@ -1339,7 +1339,7 @@ public final class DexBufferArray extends DexBuffer {
         }
 
         public int getClassAnnotationsOffset() {
-            Section sec = new Section(getOffset());
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset());
             return sec.readInt();
         }
 
@@ -1362,7 +1362,10 @@ public final class DexBufferArray extends DexBuffer {
                                                          // at the beginning
                                                          // of this section.
 
-            Section sec = new Section(getOffset()); // for reading the section
+            Section sec = new SectionArrayed(DexBufferArray.this, getOffset()); // for
+                                                                                // reading
+                                                                                // the
+                                                                                // section
 
             // read through the section and collect address pointers.
             sec.readInt(); // burn it - we got the address already but need to
