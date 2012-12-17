@@ -9,7 +9,6 @@ import com.android.dx.io.Annotation;
 import com.android.dx.io.ClassData;
 import com.android.dx.io.ClassDef;
 import com.android.dx.io.Code;
-import com.android.dx.io.DexBuffer;
 import com.android.dx.io.EncodedValue;
 import com.android.dx.io.EncodedValueReader;
 import com.android.dx.io.FieldId;
@@ -23,7 +22,6 @@ import com.android.dx.util.ByteOutput;
 import com.android.dx.util.DexException;
 import com.android.dx.util.Leb128Utils;
 import com.android.dx.util.Mutf8;
-import com.android.dx.util.Unsigned;
 
 /**
  * Points to a region of the buffer. Reads and writes data to it.

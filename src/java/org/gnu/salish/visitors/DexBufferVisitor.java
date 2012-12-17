@@ -32,9 +32,9 @@ import com.android.dx.io.ClassData;
 import com.android.dx.io.ClassData.Method;
 import com.android.dx.io.ClassDef;
 import com.android.dx.io.Code;
-import com.android.dx.io.DexBuffer;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
+import com.android.dx.io.dexbuffer.DexBuffer;
 
 /**
  * Visits artifacts in a dex buffer. The current version only visits methods.

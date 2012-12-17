@@ -54,10 +54,6 @@ import com.android.dx.io.FieldType;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.MethodType;
 import com.android.dx.io.ProtoId;
-import com.android.dx.io.ClassData.Field;
-import com.android.dx.io.ClassData.Method;
-import com.android.dx.io.Code.CatchHandler;
-import com.android.dx.io.Code.Try;
 import com.android.dx.merge.TypeList;
 import com.android.dx.util.ByteInput;
 import com.android.dx.util.ByteOutput;
@@ -462,7 +458,7 @@ public final class DexBufferArray extends DexBuffer{
         if (classDefs == null) {
             classDefs = new LinkedList<ClassDef>();
             if (tableOfContents.classDefs.exists()) {
-                DexBuffer.Section in = open(tableOfContents.classDefs.off);
+                Section in = open(tableOfContents.classDefs.off);
                 for (int index = 0; index < tableOfContents.classDefs.size; index++) {
                     classDefs.add(in.readClassDef());
                 }
@@ -540,7 +536,7 @@ public final class DexBufferArray extends DexBuffer{
                 /*
                  * if (!tableOfContents.classDefs.exists()) { return
                  * Collections.<ClassDef> emptySet().iterator(); } return new
-                 * Iterator<ClassDef>() { private DexBuffer.Section in =
+                 * Iterator<ClassDef>() { private Section in =
                  * open(tableOfContents.classDefs.off); private int count = 0;
                  * public boolean hasNext() { return count <
                  * tableOfContents.classDefs.size; } public ClassDef next() { if
@@ -562,7 +558,7 @@ public final class DexBufferArray extends DexBuffer{
                 }
                 return new Iterator<BufferedClassDefItem>() {
 
-                    private DexBuffer.Section in = open(tableOfContents.classDefs.off);
+                    private Section in = open(tableOfContents.classDefs.off);
                     private int count = 0;
 
                     public boolean hasNext() {
