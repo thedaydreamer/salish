@@ -16,43 +16,19 @@
 
 package com.android.dx.io;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.UTFDataFormatException;
-import java.util.AbstractList;
-import java.util.Collections;
-import java.util.Hashtable;
-import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
-import schilling.richard.dalvik.vm.DvmGlobals;
-import schilling.richard.dalvik.vm.oo.util.ClassDefFactory;
-import schilling.richard.dalvik.vm.oo.util.ClassLoaderUtil;
-import android.util.Log;
 import android.util.SparseArray;
 
-import com.android.dx.dex.DexFormat;
-import com.android.dx.dex.SizeOf;
 import com.android.dx.dex.TableOfContents;
 import com.android.dx.io.ClassData.Field;
 import com.android.dx.io.ClassData.Method;
 import com.android.dx.io.dexbuffer.DexBuffer;
+import com.android.dx.io.dexbuffer.Section;
 import com.android.dx.merge.TypeList;
-import com.android.dx.util.ByteInput;
-import com.android.dx.util.ByteOutput;
-import com.android.dx.util.DexException;
-import com.android.dx.util.FileUtils;
-import com.android.dx.util.Leb128Utils;
-import com.android.dx.util.Mutf8;
 
 /**
  * The bytes of a dex file in memory for reading and writing. All int offsets

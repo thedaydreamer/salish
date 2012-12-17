@@ -73,7 +73,7 @@ public final class DexBufferArray extends DexBuffer {
 
     public static final String LOG_TAG = "Finnr.DexBuffer";
 
-    private byte[] data;
+    byte[] data;
     private final TableOfContents tableOfContents = new TableOfContents();
     private int length = 0;
 
@@ -1846,6 +1846,17 @@ public final class DexBufferArray extends DexBuffer {
 
         adler32.update(data, offset, data.length - offset);
         return (int) adler32.getValue();
+    }
+
+    @Override
+    public void calculateAdler32() {
+        // recalculate Adler32 and store that value
+        Adler32 adler = new Adler32();
+        int pos = 8 + SizeOf.UINT;
+        int byteCount = getLength() - pos;
+        adler.update(data, pos, byteCount);
+        open(8).writeInt((int) adler.getValue());
+
     }
 
 }

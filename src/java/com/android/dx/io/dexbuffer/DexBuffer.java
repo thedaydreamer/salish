@@ -31,6 +31,7 @@ import schilling.richard.dalvik.vm.oo.util.ClassLoaderUtil;
 import android.util.Log;
 import android.util.SparseArray;
 
+import com.android.dx.dex.SizeOf;
 import com.android.dx.dex.TableOfContents;
 import com.android.dx.io.ClassData;
 import com.android.dx.io.ClassDef;
@@ -515,4 +516,5 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
      * Returns the checksum of all but the first 12 bytes of {@code dex}.
      */
     public abstract int computeChecksum() throws IOException;
-}
+
+    public abstract void calculateAdler32();}
