@@ -45,7 +45,7 @@ import com.android.dx.dex.SizeOf;
 import com.android.dx.dex.TableOfContents;
 import com.android.dx.io.ClassData.Field;
 import com.android.dx.io.ClassData.Method;
-import com.android.dx.io.dexbuffer.AbstractDexBuffer;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.merge.TypeList;
 import com.android.dx.util.ByteInput;
 import com.android.dx.util.ByteOutput;
@@ -58,7 +58,7 @@ import com.android.dx.util.Mutf8;
  * The bytes of a dex file in memory for reading and writing. All int offsets
  * are unsigned.
  */
-public class ByteArrayDexBuffer extends AbstractDexBuffer {
+public class ByteArrayDexBuffer extends DexBuffer {
 
     @Override
     public SparseArray<ClassData> classData() {

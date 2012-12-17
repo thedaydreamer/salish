@@ -70,7 +70,7 @@ import com.android.dx.util.Mutf8;
  * Array backed DexBuffer. The bytes of a dex file in memory for reading and
  * writing. All int offsets are unsigned.
  */
-public final class DexBufferArray {
+public final class DexBufferArray extends DexBuffer{
 
     public static final String LOG_TAG = "Finnr.DexBuffer";
 

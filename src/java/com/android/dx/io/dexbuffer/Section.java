@@ -35,9 +35,9 @@ public abstract class Section implements ByteInput, ByteOutput {
     private int position; // TODO remove this from the abstract section.
     private final int limit;
     private final int start;
-    private final AbstractDexBuffer buffer;
+    private final DexBuffer buffer;
 
-    public Section(AbstractDexBuffer buffer, String name, int position, int limit) {
+    public Section(DexBuffer buffer, String name, int position, int limit) {
         this.name = name;
         this.position = position;
         this.start = position;

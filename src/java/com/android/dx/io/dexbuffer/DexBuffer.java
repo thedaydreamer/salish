@@ -41,7 +41,7 @@ import com.android.dx.merge.TypeList;
  * The bytes of a dex file in memory for reading and writing. All int offsets
  * are unsigned.
  */
-public abstract class AbstractDexBuffer { // TODO Rename manually to DexBuffer.
+public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
 
     public static final String LOG_TAG = "Finnr.DexBuffer";
 
@@ -52,6 +52,7 @@ public abstract class AbstractDexBuffer { // TODO Rename manually to DexBuffer.
      */
     public abstract SparseArray<ClassData> classData();
 
+    
     /**
      * Writes the binary representation of the dex buffer to an output stream.
      * 
