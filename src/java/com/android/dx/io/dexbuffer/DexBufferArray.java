@@ -66,7 +66,7 @@ import com.android.dx.util.Mutf8;
  * Array backed DexBuffer. The bytes of a dex file in memory for reading and
  * writing. All int offsets are unsigned.
  */
-public final class DexBufferArray extends DexBuffer{
+public final class DexBufferArray extends DexBuffer {
 
     public static final String LOG_TAG = "Finnr.DexBuffer";
 
@@ -648,21 +648,21 @@ public final class DexBufferArray extends DexBuffer{
                 "unable to resolve field ID to a ClassData.Field object.");
     }
 
-    public final class Section implements ByteInput, ByteOutput {
+    public final class SectionBackup implements ByteInput, ByteOutput {
 
         private final String name;
         private int position;
         private final int limit;
         private final int start;
 
-        private Section(String name, int position, int limit) {
+        private SectionBackup(String name, int position, int limit) {
             this.name = name;
             this.position = position;
             this.start = position;
             this.limit = limit;
         }
 
-        private Section(int position) {
+        private SectionBackup(int position) {
             this("section", position, data.length);
         }
 
