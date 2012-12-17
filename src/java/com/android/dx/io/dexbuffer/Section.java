@@ -29,15 +29,14 @@ import com.android.dx.util.Mutf8;
  * @author rschilling
  */
 public abstract class Section implements ByteInput, ByteOutput {
-    private final String name;
-    private int position; // TODO remove this from the abstract section.
-    private final int limit;
-    private final int start;
-    private final DexBuffer buffer;
+    protected final String name;
+    protected final int limit;
+    protected final int start;
+    protected final DexBuffer buffer;
 
     public Section(DexBuffer buffer, String name, int position, int limit) {
         this.name = name;
-        this.position = position;
+
         this.start = position;
         this.limit = limit;
         this.buffer = buffer;
@@ -47,9 +46,7 @@ public abstract class Section implements ByteInput, ByteOutput {
      * Sets the current position of the section for reading/writing to the start
      * position.
      */
-    public void reset() {
-        position = start;
-    }
+    public abstract void reset();
 
     /**
      * Returns the current size of the section which is the current position
@@ -61,29 +58,21 @@ public abstract class Section implements ByteInput, ByteOutput {
      * @return the number of bytes in the section up to and including the
      *         position (getPosition() - getStartPosition()).
      */
-    public int getCurrentSize() {
-
-        return position - start;
-
-    }
+    public abstract int getCurrentSize();
 
     /**
      * Returns the position that will be set if reset() is called.
      * 
      * @return the start position of the section.
      */
-    public int getStartPosition() {
-        return start;
-    }
+    public abstract int getStartPosition();
 
     /**
      * Gets the current position for reading/writing.
      * 
      * @return the current read/write position.
      */
-    public int getPosition() {
-        return position;
-    }
+    public abstract int getPosition();
 
     public abstract int readInt();
 
@@ -120,10 +109,12 @@ public abstract class Section implements ByteInput, ByteOutput {
         return new TypeList(buffer, types);
     }
 
+    public abstract void setPosition(int position);
+
     public String readString() {
         int offset = readInt();
-        int savedPosition = position;
-        position = offset;
+        int savedPosition = getPosition();
+        setPosition(offset);
         try {
             int expectedLength = readUleb128();
             String result = Mutf8.decode(this, new char[expectedLength]);
@@ -136,7 +127,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         } catch (UTFDataFormatException e) {
             throw new DexException(e);
         } finally {
-            position = savedPosition;
+            setPosition(savedPosition);
         }
     }
 
@@ -186,7 +177,7 @@ public abstract class Section implements ByteInput, ByteOutput {
      * @return A method code item.
      */
     public Code readCode() {
-        int start = position;
+        int start = getPosition();
         int registersSize = readUnsignedShort();
         int insSize = readUnsignedShort();
         int outsSize = readUnsignedShort();
@@ -221,7 +212,7 @@ public abstract class Section implements ByteInput, ByteOutput {
 
         }
 
-        int size = position - start;
+        int size = getPosition() - start;
 
         return new Code(registersSize, insSize, outsSize, debugInfoOffset,
                 instructions, tries, catchHandlers, start, size);
@@ -290,7 +281,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         ClassData.Method[] result = new ClassData.Method[count];
         int methodIndex = 0;
         for (int i = 0; i < count; i++) {
-            int methodOff = this.position;
+            int methodOff = getPosition();
             int rawIndex = readUleb128();
             methodIndex += rawIndex; // method index diff
             int accessFlags = readUleb128();
@@ -337,9 +328,9 @@ public abstract class Section implements ByteInput, ByteOutput {
     }
 
     public EncodedValue readEncodedValue() {
-        int start = position;
+        int start = getPosition();
         new EncodedValueReader(this).readValue();
-        int end = position;
+        int end = getPosition();
         int len = end - start + 1;
         byte[] copied = new byte[len];
         readByteArray(copied, start);
@@ -359,9 +350,9 @@ public abstract class Section implements ByteInput, ByteOutput {
     public abstract void readByteArray(byte[] copied, int start2);
 
     public EncodedValue readEncodedArray() {
-        int start = position;
+        int start = getPosition();
         new EncodedValueReader(this).readArray();
-        int end = position;
+        int end = getPosition();
         int len = end - start + 1;
         byte[] copied = new byte[len];
         readByteArray(copied, start);
@@ -369,14 +360,14 @@ public abstract class Section implements ByteInput, ByteOutput {
     }
 
     public void ensureCapacity(int size) {
-        if (position + size > limit) {
+        if (getPosition() + size > limit) {
             throw new DexException("Section limit " + limit
                     + " exceeded by " + name);
         }
     }
 
     public void assertFourByteAligned() {
-        if ((position & 3) != 0) {
+        if ((getPosition() & 3) != 0) {
             throw new IllegalStateException("Not four byte aligned!");
         }
     }
@@ -389,7 +380,14 @@ public abstract class Section implements ByteInput, ByteOutput {
 
     public abstract void write(short s);
 
-    public abstract void writeUnsignedShort(int i);
+    public void writeUnsignedShort(int i) {
+        short s = (short) i;
+        if (i != (s & 0xffff)) {
+            throw new IllegalArgumentException(
+                    "Expected an unsigned short: " + i);
+        }
+        writeShort(s);
+    }
 
     public abstract void writeShort(short i);
 
@@ -399,7 +397,13 @@ public abstract class Section implements ByteInput, ByteOutput {
         }
     }
 
-    public abstract void writeInt(int i);
+    public void writeInt(int i) {
+        ensureCapacity(4);
+        write((byte) i);
+        write((byte) (i >>> 8));
+        write((byte) (i >>> 16));
+        write((byte) (i >>> 24));
+    }
 
     public void writeUleb128(int i) {
         try {
@@ -445,7 +449,7 @@ public abstract class Section implements ByteInput, ByteOutput {
      * Returns the number of bytes remaining in this section.
      */
     public int remaining() {
-        return limit - position;
+        return limit - getPosition();
     }
 
 };
