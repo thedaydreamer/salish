@@ -46,10 +46,10 @@ import com.android.dx.merge.TypeList;
  */
 public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
 
-    private static final int CHECKSUM_OFFSET = 8;
-    private static final int CHECKSUM_SIZE = 4;
-    private static final int SIGNATURE_OFFSET = CHECKSUM_OFFSET + CHECKSUM_SIZE;
-    private static final int SIGNATURE_SIZE = 20;
+    public static final int CHECKSUM_OFFSET = 8;
+    public static final int CHECKSUM_SIZE = 4;
+    public static final int SIGNATURE_OFFSET = CHECKSUM_OFFSET + CHECKSUM_SIZE;
+    public static final int SIGNATURE_SIZE = 20;
 
     public static final String LOG_TAG = "Finnr.DexBuffer";
 
@@ -514,5 +514,5 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
     /**
      * Returns the checksum of all but the first 12 bytes of {@code dex}.
      */
-    public abstract int computeChecksum(DexBuffer dex) throws IOException;
+    public abstract int computeChecksum() throws IOException;
 }

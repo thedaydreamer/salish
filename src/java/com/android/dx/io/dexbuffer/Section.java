@@ -185,7 +185,7 @@ public abstract class Section implements ByteInput, ByteOutput {
      * 
      * @return A method code item.
      */
-    private Code readCode() {
+    public Code readCode() {
         int start = position;
         int registersSize = readUnsignedShort();
         int insSize = readUnsignedShort();
@@ -228,7 +228,7 @@ public abstract class Section implements ByteInput, ByteOutput {
 
     }
 
-    private Code.CatchHandler readCatchHandler(int startPosition) {
+    public Code.CatchHandler readCatchHandler(int startPosition) {
         List<String> types = buffer.typeNames();
         int size = readSleb128();
 
@@ -257,7 +257,7 @@ public abstract class Section implements ByteInput, ByteOutput {
 
     }
 
-    private ClassData readClassData() {
+    public ClassData readClassData() {
         int staticFieldsSize = readUleb128();
         int instanceFieldsSize = readUleb128();
         int directMethodsSize = readUleb128();
@@ -274,7 +274,7 @@ public abstract class Section implements ByteInput, ByteOutput {
                 virtualMethods);
     }
 
-    private ClassData.Field[] readFields(FieldType fieldType, int count) {
+    public ClassData.Field[] readFields(FieldType fieldType, int count) {
         ClassData.Field[] result = new ClassData.Field[count];
         int fieldIndex = 0;
         for (int i = 0; i < count; i++) {
@@ -286,7 +286,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         return result;
     }
 
-    private ClassData.Method[] readMethods(MethodType methodType, int count) {
+    public ClassData.Method[] readMethods(MethodType methodType, int count) {
         ClassData.Method[] result = new ClassData.Method[count];
         int methodIndex = 0;
         for (int i = 0; i < count; i++) {
@@ -368,7 +368,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         return new EncodedValue(copied);
     }
 
-    private void ensureCapacity(int size) {
+    public void ensureCapacity(int size) {
         if (position + size > limit) {
             throw new DexException("Section limit " + limit
                     + " exceeded by " + name);

@@ -1454,12 +1454,12 @@ public final class DexBufferArray extends DexBuffer {
         }
 
         public int getContents() {
-            Section sec = new Section(address);
+            SectionBackup sec = new SectionBackup(address);
             return sec.readInt();
         }
 
         public void setContents(int addr) {
-            Section sec = new Section(address);
+            SectionBackup sec = new SectionBackup(address);
             sec.writeInt(addr);
         }
 
@@ -1815,13 +1815,13 @@ public final class DexBufferArray extends DexBuffer {
 
         return null;
     }
-    
+
     /**
      * Returns the signature of all but the first 32 bytes of {@code dex}. The
      * first 32 bytes of dex files are not specified to be included in the
      * signature.
      */
-    public byte[] computeSignature(DexBuffer dex) throws IOException {
+    public byte[] computeSignature() throws IOException {
         MessageDigest digest;
         try {
             digest = MessageDigest.getInstance("SHA-1");
@@ -1830,20 +1830,18 @@ public final class DexBufferArray extends DexBuffer {
         }
         int offset = SIGNATURE_OFFSET + SIGNATURE_SIZE;
 
-        byte[] bytes = dex.getBytes();
-        digest.update(bytes, offset, bytes.length - offset);
+        digest.update(data, offset, data.length - offset);
         return digest.digest();
     }
 
     /**
      * Returns the checksum of all but the first 12 bytes of {@code dex}.
      */
-    public int computeChecksum(DexBuffer dex) throws IOException {
+    public int computeChecksum() throws IOException {
         Adler32 adler32 = new Adler32();
         int offset = CHECKSUM_OFFSET + CHECKSUM_SIZE;
 
-        byte[] bytes = dex.getBytes();
-        adler32.update(bytes, offset, bytes.length - offset);
+        adler32.update(data, offset, data.length - offset);
         return (int) adler32.getValue();
     }
 
