@@ -39,9 +39,9 @@ public class SectionFile extends Section {
     }
 
     @Override
-    public long getPosition() {
+    public int getPosition() {
         try {
-            return ((DexBufferRandomAccessFile) buffer).file.getFilePointer();
+            return (int)((DexBufferRandomAccessFile) buffer).file.getFilePointer();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -70,7 +70,7 @@ public class SectionFile extends Section {
     }
 
     @Override
-    public void setPosition(long position) {
+    public void setPosition(int position) {
         try {
             ((DexBufferRandomAccessFile) buffer).file.seek(position);
         } catch (IOException e) {

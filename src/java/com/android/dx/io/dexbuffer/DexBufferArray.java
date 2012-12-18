@@ -729,58 +729,7 @@ public final class DexBufferArray extends DexBuffer {
 
     }
 
-    /**
-     * Returns the class depth of a class' signature. If the class signature
-     * cannot be resolved to a ClassDef object or a platform class (Class type),
-     * then an exception is thrown.
-     * 
-     * @param signature the signature of the class to calcualte the depth for.
-     * @return the number of superclasses the specified class has.
-     */
-    public int getClassDepth(String signature) {
-
-        if (signature.equals(DvmGlobals.JAVA_LANG_OBJECT_SIGNATURE))
-            return 0;
-
-        if (signature.charAt(0) == '[')
-            return 1;
-
-        int result = 0;
-        ClassDef cDef = getDef(signature);
-        while (cDef != null) {
-            // all classes referenced in the DexFile have a ClassDef.
-            result++;
-            cDef = getDef(cDef.getSupertypeSignature());
-        }
-
-        // TODO: determine if this form of statement generates fewer
-        // instructrions than this form : if
-        // (ClassDefFactory.isPlatformClassSpecifier(signature).
-
-        boolean isPlatform = ClassDefFactory
-                .isPlatformClassSpecifier(signature);
-        if (!isPlatform)
-            // no ClassDef and not found on the platform. Critical error.
-            throw new IllegalArgumentException(
-                    String.format("signature %s could not be found."));
-
-        String cName = ClassLoaderUtil.convertTypeToClassName(signature);
-        try {
-
-            // load the class definition but don't initialize it.
-            result += ClassLoaderUtil.getClassDepth(Class.forName(cName, false,
-                    null));
-
-        } catch (ClassNotFoundException ex) {
-            throw new IllegalArgumentException(
-                    "unable to convert class signature " + signature
-                            + " to a platform class.");
-        }
-
-        return result;
-
-    }
-
+    
     /**
      * Returns the signature of all but the first 32 bytes of {@code dex}. The
      * first 32 bytes of dex files are not specified to be included in the
