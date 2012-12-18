@@ -41,7 +41,7 @@ public class SectionFile extends Section {
     @Override
     public int getPosition() {
         try {
-            return (int)((DexBufferRandomAccessFile) buffer).file.getFilePointer();
+            return (int) ((DexBufferRandomAccessFile) buffer).file.getFilePointer();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -80,33 +80,50 @@ public class SectionFile extends Section {
     }
 
     @Override
-    public void readByteArray(byte[] copied, int start2) {
-        // TODO Auto-generated method stub
+    public void readByteArray(byte[] copied, int startPosition) {
+        try {
+            ((DexBufferRandomAccessFile) buffer).file.seek(startPosition);
+            ((DexBufferRandomAccessFile) buffer).file.read(copied);
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
 
     }
 
     @Override
     public void write(byte[] bytes) {
-        // TODO Auto-generated method stub
+        try {
+            ((DexBufferRandomAccessFile) buffer).file.write(bytes);
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
 
     }
 
     @Override
     public void write(byte b) {
-        // TODO Auto-generated method stub
+        try {
+            ((DexBufferRandomAccessFile) buffer).file.write(b);
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
 
     }
 
     @Override
     public void write(short s) {
-        // TODO Auto-generated method stub
+
+        try {
+            ensureCapacity(2);
+            ((DexBufferRandomAccessFile) buffer).file.write((byte) s);
+            ((DexBufferRandomAccessFile) buffer).file.write((byte) (s >>> 8));
+
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
 
     }
 
-    @Override
-    public void writeShort(short i) {
-        // TODO Auto-generated method stub
-
-    }
+   
 
 }

@@ -48,7 +48,6 @@ public abstract class Section implements ByteInput, ByteOutput {
      */
     public abstract void reset();
 
-
     /**
      * Returns the position that will be set if reset() is called.
      * 
@@ -107,7 +106,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         }
 
     }
-    
+
     /**
      * Returns the current size of the section which is the current position
      * minus the start position. This is the size of the section in bytes up to
@@ -257,10 +256,10 @@ public abstract class Section implements ByteInput, ByteOutput {
         int size = readSleb128();
 
         int handlerOffset = getCurrentSize(); // see DEX
-                                                           // documentation
-                                                           // for the
-                                                           // try_item.handler_off
-                                                           // item.
+                                              // documentation
+                                              // for the
+                                              // try_item.handler_off
+                                              // item.
 
         int handlersCount = Math.abs(size);
         int[] typeIndexes = new int[handlersCount];
@@ -419,10 +418,8 @@ public abstract class Section implements ByteInput, ByteOutput {
             throw new IllegalArgumentException(
                     "Expected an unsigned short: " + i);
         }
-        writeShort(s);
+        write(s);
     }
-
-    public abstract void writeShort(short i);
 
     public final void write(short[] shorts) {
         for (short s : shorts) {

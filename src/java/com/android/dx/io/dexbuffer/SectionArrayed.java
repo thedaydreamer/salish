@@ -24,17 +24,10 @@ public class SectionArrayed extends Section {
         position = start;
     }
 
-  
-
     @Override
     public int getPosition() {
         return position;
     }
-
-   
-
-   
-    
 
     @Override
     public byte readByte() {
@@ -48,7 +41,6 @@ public class SectionArrayed extends Section {
         position += length;
         return result;
     }
-
 
     @Override
     public void write(byte[] bytes) {
@@ -90,7 +82,10 @@ public class SectionArrayed extends Section {
 
     @Override
     public void write(short s) {
-        // TODO Auto-generated method stub
+        ensureCapacity(2);
+        ((DexBufferArray) buffer).data[position] = (byte) s;
+        ((DexBufferArray) buffer).data[position + 1] = (byte) (s >>> 8);
+        position += 2;
 
     }
 
