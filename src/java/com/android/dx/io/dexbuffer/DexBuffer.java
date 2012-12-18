@@ -80,6 +80,8 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
 
     public abstract int getLength();
 
+    
+
     public final Iterable<BufferedClassDefItem> bufferedClassDefItems() {
         return new Iterable<BufferedClassDefItem>() {
 
@@ -652,7 +654,7 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
      * @param signature the signature of the class to calcualte the depth for.
      * @return the number of superclasses the specified class has.
      */
-    public int getClassDepth(String signature) {
+    public final int getClassDepth(String signature) {
 
         if (signature.equals(DvmGlobals.JAVA_LANG_OBJECT_SIGNATURE))
             return 0;
@@ -796,7 +798,7 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
      * 
      * @return a list of all offset references in the file.
      */
-    public List<AddressPointer> getAllAddressPointers() {
+    public final List<AddressPointer> getAllAddressPointers() {
 
         LinkedList<AddressPointer> result = new LinkedList<AddressPointer>();
 

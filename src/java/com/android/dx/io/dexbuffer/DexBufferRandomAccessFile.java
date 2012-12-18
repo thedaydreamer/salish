@@ -18,7 +18,7 @@ import com.android.dx.dex.TableOfContents;
  */
 public class DexBufferRandomAccessFile extends DexBuffer {
     public static final int BUFFER_SIZE = 1024;
-    private RandomAccessFile file;
+    protected RandomAccessFile file;
 
     public DexBufferRandomAccessFile(File f) {
         try {

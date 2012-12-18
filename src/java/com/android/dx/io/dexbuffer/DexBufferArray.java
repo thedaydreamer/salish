@@ -240,21 +240,7 @@ public final class DexBufferArray extends DexBuffer {
             position = start;
         }
 
-        /**
-         * Returns the current size of the section which is the current position
-         * minus the start position. This is the size of the section in bytes up
-         * to its current writing position. In cases where this section is only
-         * being written to, this can be interpreted as the number of bytes
-         * written to the section.
-         * 
-         * @return the number of bytes in the section up to and including the
-         *         position (getPosition() - getStartPosition()).
-         */
-        public int getCurrentSize() {
-
-            return position - start;
-
-        }
+        
 
         /**
          * Returns the position that will be set if reset() is called.

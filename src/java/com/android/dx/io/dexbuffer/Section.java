@@ -34,10 +34,10 @@ public abstract class Section implements ByteInput, ByteOutput {
     protected final int start;
     protected final DexBuffer buffer;
 
-    public Section(DexBuffer buffer, String name, int position, int limit) {
+    public Section(DexBuffer buffer, String name, int startPosition, int limit) {
         this.name = name;
 
-        this.start = position;
+        this.start = startPosition;
         this.limit = limit;
         this.buffer = buffer;
     }
@@ -48,6 +48,66 @@ public abstract class Section implements ByteInput, ByteOutput {
      */
     public abstract void reset();
 
+
+    /**
+     * Returns the position that will be set if reset() is called.
+     * 
+     * @return the start position of the section.
+     */
+    public final int getStartPosition() {
+        return start;
+    }
+
+    /**
+     * Gets the current position for reading/writing.
+     * 
+     * @return the current read/write position.
+     */
+    public abstract int getPosition();
+
+    public final int readInt() {
+        int result = (readByte() & 0xff)
+                | (readByte() & 0xff) << 8
+                | (readByte() & 0xff) << 16
+                | (readByte() & 0xff) << 24;
+        return result;
+    }
+
+    public final short readShort() {
+        int result = (readByte() & 0xff)
+                | (readByte() & 0xff) << 8;
+        return (short) result;
+    }
+
+    public final int readUnsignedShort() {
+        return readShort() & 0xffff;
+    }
+
+    public abstract byte readByte();
+
+    public abstract byte[] readByteArray(int length);
+
+    public final short[] readShortArray(int length) {
+        short[] result = new short[length];
+        for (int i = 0; i < length; i++) {
+            result[i] = readShort();
+        }
+        return result;
+    }
+
+    /**
+     * Writes 0x00 until the position is aligned to a multiple of 4.
+     */
+    public final void alignToFourBytes() {
+        int unalignedPosition = getPosition();
+        setPosition(DexBuffer.fourByteAlign(unalignedPosition));
+        int alignedPosition = getPosition();
+        for (int i = unalignedPosition; i < alignedPosition; i++) {
+            write((byte) 0);
+        }
+
+    }
+    
     /**
      * Returns the current size of the section which is the current position
      * minus the start position. This is the size of the section in bytes up to
@@ -58,38 +118,11 @@ public abstract class Section implements ByteInput, ByteOutput {
      * @return the number of bytes in the section up to and including the
      *         position (getPosition() - getStartPosition()).
      */
-    public abstract int getCurrentSize();
+    public final int getCurrentSize() {
 
-    /**
-     * Returns the position that will be set if reset() is called.
-     * 
-     * @return the start position of the section.
-     */
-    public abstract int getStartPosition();
+        return getPosition() - getStartPosition();
 
-    /**
-     * Gets the current position for reading/writing.
-     * 
-     * @return the current read/write position.
-     */
-    public abstract int getPosition();
-
-    public abstract int readInt();
-
-    public abstract short readShort();
-
-    public abstract int readUnsignedShort();
-
-    public abstract byte readByte();
-
-    public abstract byte[] readByteArray(int length);
-
-    public abstract short[] readShortArray(int length);
-
-    /**
-     * Writes 0x00 until the position is aligned to a multiple of 4.
-     */
-    public abstract void alignToFourBytes();
+    }
 
     public final int readUleb128() {
         return Leb128Utils.readUnsignedLeb128(this);
@@ -212,7 +245,7 @@ public abstract class Section implements ByteInput, ByteOutput {
 
         }
 
-        int size = getPosition() - start;
+        int size = getCurrentSize();
 
         return new Code(registersSize, insSize, outsSize, debugInfoOffset,
                 instructions, tries, catchHandlers, start, size);
@@ -223,7 +256,7 @@ public abstract class Section implements ByteInput, ByteOutput {
         List<String> types = buffer.typeNames();
         int size = readSleb128();
 
-        int handlerOffset = getPosition() - startPosition; // see DEX
+        int handlerOffset = getCurrentSize(); // see DEX
                                                            // documentation
                                                            // for the
                                                            // try_item.handler_off

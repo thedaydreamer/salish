@@ -1,114 +1,112 @@
 
 package com.android.dx.io.dexbuffer;
 
+import java.io.IOException;
+
 public class SectionFile extends Section {
+
+    public SectionFile(DexBuffer buffer, String name, int position) {
+        super(buffer, name, position, buffer.getLength());
+        try {
+            ((DexBufferRandomAccessFile) buffer).file.seek(position);
+        } catch (IOException e) {
+
+            throw new RuntimeException(e);
+        }
+
+    }
 
     @Override
     public void writeByte(int i) {
-        // TODO Auto-generated method stub
-        
+        try {
+            ((DexBufferRandomAccessFile) buffer).file.write((byte) i);
+        } catch (IOException e) {
+
+            throw new RuntimeException(e);
+
+        }
+
     }
 
     @Override
     public void reset() {
-        // TODO Auto-generated method stub
-        
+        try {
+            ((DexBufferRandomAccessFile) buffer).file.seek(start);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
     }
 
     @Override
-    public int getCurrentSize() {
-        // TODO Auto-generated method stub
-        return 0;
-    }
-
-    @Override
-    public int getStartPosition() {
-        // TODO Auto-generated method stub
-        return 0;
-    }
-
-    @Override
-    public int getPosition() {
-        // TODO Auto-generated method stub
-        return 0;
-    }
-
-    @Override
-    public int readInt() {
-        // TODO Auto-generated method stub
-        return 0;
-    }
-
-    @Override
-    public short readShort() {
-        // TODO Auto-generated method stub
-        return 0;
-    }
-
-    @Override
-    public int readUnsignedShort() {
-        // TODO Auto-generated method stub
-        return 0;
+    public long getPosition() {
+        try {
+            return ((DexBufferRandomAccessFile) buffer).file.getFilePointer();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
     public byte readByte() {
-        // TODO Auto-generated method stub
-        return 0;
+        try {
+            return ((DexBufferRandomAccessFile) buffer).file.readByte();
+        } catch (IOException e) {
+
+            throw new RuntimeException(e);
+
+        }
     }
 
     @Override
     public byte[] readByteArray(int length) {
-        // TODO Auto-generated method stub
-        return null;
+        byte[] result = new byte[length];
+        try {
+            ((DexBufferRandomAccessFile) buffer).file.read(result);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
     }
 
     @Override
-    public short[] readShortArray(int length) {
-        // TODO Auto-generated method stub
-        return null;
-    }
+    public void setPosition(long position) {
+        try {
+            ((DexBufferRandomAccessFile) buffer).file.seek(position);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
 
-    @Override
-    public void alignToFourBytes() {
-        // TODO Auto-generated method stub
-        
-    }
-
-    @Override
-    public void setPosition(int position) {
-        // TODO Auto-generated method stub
-        
     }
 
     @Override
     public void readByteArray(byte[] copied, int start2) {
         // TODO Auto-generated method stub
-        
+
     }
 
     @Override
     public void write(byte[] bytes) {
         // TODO Auto-generated method stub
-        
+
     }
 
     @Override
     public void write(byte b) {
         // TODO Auto-generated method stub
-        
+
     }
 
     @Override
     public void write(short s) {
         // TODO Auto-generated method stub
-        
+
     }
 
     @Override
     public void writeShort(short i) {
         // TODO Auto-generated method stub
-        
+
     }
 
 }

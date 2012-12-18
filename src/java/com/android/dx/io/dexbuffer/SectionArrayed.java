@@ -1,7 +1,6 @@
 
 package com.android.dx.io.dexbuffer;
 
-
 /**
  * A section of a DexBufferArray object.
  * 
@@ -11,12 +10,13 @@ public class SectionArrayed extends Section {
 
     protected int position;
 
-    SectionArrayed(DexBufferArray buffer, String name, int position, int limit) {
-        super(buffer, name, position, limit);
+    SectionArrayed(DexBufferArray buffer, String name, int startPosition, int limit) {
+        super(buffer, name, startPosition, limit);
+        this.position = startPosition;
     }
 
-    SectionArrayed(DexBufferArray buffer, int position) {
-        this(buffer, "section", position, buffer.getLength());
+    SectionArrayed(DexBufferArray buffer, int startPosition) {
+        this(buffer, "section", startPosition, buffer.getLength());
     }
 
     @Override
@@ -24,43 +24,17 @@ public class SectionArrayed extends Section {
         position = start;
     }
 
-    @Override
-    public int getCurrentSize() {
-
-        return position - start;
-
-    }
-
-    @Override
-    public int getStartPosition() {
-        return start;
-    }
+  
 
     @Override
     public int getPosition() {
         return position;
     }
 
-    @Override
-    public int readInt() {
-        int result = (readByte() & 0xff)
-                | (readByte() & 0xff) << 8
-                | (readByte() & 0xff) << 16
-                | (readByte() & 0xff) << 24;
-        return result;
-    }
+   
 
-    @Override
-    public short readShort() {
-        int result = (readByte() & 0xff)
-                | (readByte() & 0xff) << 8;
-        return (short) result;
-    }
-
-    @Override
-    public int readUnsignedShort() {
-        return readShort() & 0xffff;
-    }
+   
+    
 
     @Override
     public byte readByte() {
@@ -75,23 +49,6 @@ public class SectionArrayed extends Section {
         return result;
     }
 
-    @Override
-    public short[] readShortArray(int length) {
-        short[] result = new short[length];
-        for (int i = 0; i < length; i++) {
-            result[i] = readShort();
-        }
-        return result;
-    }
-
-    @Override
-    public void alignToFourBytes() {
-        int unalignedCount = position;
-        position = DexBuffer.fourByteAlign(position);
-        for (int i = unalignedCount; i < position; i++) {
-            ((DexBufferArray) buffer).data[i] = 0;
-        }
-    }
 
     @Override
     public void write(byte[] bytes) {
@@ -136,7 +93,5 @@ public class SectionArrayed extends Section {
         // TODO Auto-generated method stub
 
     }
-    
-    
 
 }
