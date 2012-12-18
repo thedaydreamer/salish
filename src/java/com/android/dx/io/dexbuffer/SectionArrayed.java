@@ -64,15 +64,11 @@ public class SectionArrayed extends Section {
 
     @Override
     public void setPosition(int position) {
-        // TODO Auto-generated method stub
+        this.position = position;
 
     }
 
-    @Override
-    public void readByteArray(byte[] copied, int start2) {
-        // TODO Auto-generated method stub
-
-    }
+    
 
     @Override
     public void write(byte b) {
@@ -87,6 +83,14 @@ public class SectionArrayed extends Section {
         ((DexBufferArray) buffer).data[position + 1] = (byte) (s >>> 8);
         position += 2;
 
+    }
+
+    @Override
+    public void readByteArray(byte[] copied, int start2) {
+        
+        System.arraycopy(((DexBufferArray) buffer).data, position, copied, 0, copied.length);
+        position += copied.length;
+        
     }
 
 }
