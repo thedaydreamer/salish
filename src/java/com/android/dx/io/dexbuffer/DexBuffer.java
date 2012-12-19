@@ -17,6 +17,7 @@
 package com.android.dx.io.dexbuffer;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.AbstractList;
@@ -72,15 +73,11 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
      */
     public abstract void writeTo(OutputStream out) throws IOException;
 
-    public abstract void writeTo(File dexOut) throws IOException;
-
     public abstract Section open(int position);
 
     public abstract Section appendSection(int maxByteCount, String name);
 
     public abstract int getLength();
-
-    
 
     public final Iterable<BufferedClassDefItem> bufferedClassDefItems() {
         return new Iterable<BufferedClassDefItem>() {
@@ -283,8 +280,12 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
             Section pIdSection = open(tableOfContents.protoIds.off);
 
             for (int index = 0; index < tableOfContents.protoIds.size; index++) {
+                int position = pIdSection.getPosition();
                 ProtoId pId = pIdSection.readProtoId();
                 protoIds.add(pId);
+                Log.d(LOG_TAG,
+                        String.format("Loaded proto id %d @ %d: %s", index, position,
+                                pId.toString()));
             }
             protoIds = Collections.unmodifiableList(protoIds);
 
@@ -1204,6 +1205,15 @@ public abstract class DexBuffer { // TODO Rename manually to DexBuffer.
 
             return result;
         }
+
+    }
+
+    public void writeTo(File file) throws IOException {
+
+        FileOutputStream fos = new FileOutputStream(file);
+        writeTo(fos);
+        fos.flush();
+        fos.close();
 
     }
 }

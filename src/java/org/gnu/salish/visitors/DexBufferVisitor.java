@@ -246,6 +246,13 @@ public class DexBufferVisitor {
 
     }
 
+    // TODO add visits to other parts of the DEX file.
+    public void visitAll() throws InterruptedException {
+
+        visitClasses();
+
+    }
+
     /**
      * Encoded methods are read in from Class Data. MethodIdentifiers don't have
      * to be. So while each encoded method (Method) will have a MethodId, only

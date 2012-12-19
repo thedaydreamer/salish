@@ -153,7 +153,7 @@ public abstract class Section implements ByteInput, ByteOutput {
             if (result.length() != expectedLength) {
                 throw new DexException("Declared length " + expectedLength
                         + " doesn't match decoded length of "
-                        + result.length());
+                        + result.length() + " of string '" + result + "'");
             }
             return result;
         } catch (UTFDataFormatException e) {
@@ -373,13 +373,14 @@ public abstract class Section implements ByteInput, ByteOutput {
     /**
      * Reads copied.length bytes of the buffer into the array copied, starting
      * at a position position. If the buffer falls off the end of the file an
-     * exception is thrown.
+     * exception is thrown. At the end of the operation, the pointer is set to
+     * startPosition + copied.length.
      * 
      * @param copied the array to fill
      * @param start the start position. TOTO throw exception if the buffer
      *            reaches past the end of the file.
      */
-    public abstract void readByteArray(byte[] copied, int start2);
+    public abstract void readByteArray(byte[] copied, int startPosition);
 
     public final EncodedValue readEncodedArray() {
         int start = getPosition();

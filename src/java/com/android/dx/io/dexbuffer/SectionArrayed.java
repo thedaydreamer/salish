@@ -68,8 +68,6 @@ public class SectionArrayed extends Section {
 
     }
 
-    
-
     @Override
     public void write(byte b) {
         ((DexBufferArray) buffer).data[position++] = b;
@@ -86,11 +84,11 @@ public class SectionArrayed extends Section {
     }
 
     @Override
-    public void readByteArray(byte[] copied, int start2) {
-        
+    public void readByteArray(byte[] copied, int startPosition) {
+
         System.arraycopy(((DexBufferArray) buffer).data, position, copied, 0, copied.length);
         position += copied.length;
-        
+
     }
 
 }
