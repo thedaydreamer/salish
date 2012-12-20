@@ -37,6 +37,7 @@ import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
 import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.io.dexbuffer.DexBufferRandomAccessFile;
+import com.android.dx.io.dexbuffer.DexBuffer.BufferedStringIdItem;
 
 /**
  * Visits artifacts in a dex buffer. The current version only visits methods.
@@ -246,9 +247,29 @@ public class DexBufferVisitor {
 
     }
 
+    /**
+     * Visits all string ids and the strings that they point to.
+     */
+    public void visitStrings() {
+        List<BufferedStringIdItem> stringIdItems = buffer.bufferedStringIdItems;
+        for (int i = 0; i < stringIdItems.size(); i++){
+            BufferedStringIdItem item = stringIdItems.get(i);
+            
+            int offset = item.getOffset();
+            int stringOffset = item.getStringOffset();
+            
+        }
+        for (BufferedStringIdItem idItem : stringIdItems) {
+            
+            idItem.g
+        }
+
+    }
+
     // TODO add visits to other parts of the DEX file.
     public void visitAll() throws InterruptedException {
 
+        visitStrings();
         visitClasses();
 
     }
