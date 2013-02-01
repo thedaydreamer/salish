@@ -554,7 +554,7 @@ public class DexMerger {
 
         private List<UnsortedValue> readUnsortedValues(DexBuffer source,
                 IndexMap indexMap) {
-            TableOfContents.Section section = getSection(source
+            TableOfContents.TOCSection section = getSection(source
                     .getTableOfContents());
             if (!section.exists()) {
                 return Collections.emptyList();
@@ -570,7 +570,7 @@ public class DexMerger {
             return result;
         }
 
-        abstract TableOfContents.Section getSection(
+        abstract TableOfContents.TOCSection getSection(
                 TableOfContents tableOfContents);
 
         abstract T read(Section in, IndexMap indexMap, int index);

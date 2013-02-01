@@ -91,43 +91,5 @@ public final class FileSystemUtil {
 
     }
 
-    /**
-     * Create output directory and return the path.
-     * 
-     * @return the path to the output directory.
-     */
-    public static File createExternalOutputDirectory() throws IOException {
-
-        /* create the output directory if it doesn't exist. */
-        File outputDirectory = FinnrApp.getApp().getExternalOutputDirectory();
-        if (!outputDirectory.exists()) {
-            Log.i(LOG_TAG, "Creating external output directory " + outputDirectory);
-            if (!outputDirectory.mkdirs()) {
-                throw new IllegalStateException(
-                        "Can't create the output directory " + outputDirectory);
-
-            }
-        }
-
-        return outputDirectory;
-
-    }
-
-    public static File createInternalOutputDirectory() {
-
-        /* create the output directory if it doesn't exist. */
-        File outputDirectory = FinnrApp.getApp().getInternalOutputDirectory();
-        if (!outputDirectory.exists()) {
-            Log.i(LOG_TAG, "Creating internal output directory " + outputDirectory);
-            if (!outputDirectory.mkdirs()) {
-                throw new IllegalStateException(
-                        "Can't create the output directory " + outputDirectory);
-
-            }
-        }
-
-        return outputDirectory;
-
-    }
-
+   
 }

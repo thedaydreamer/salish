@@ -13,6 +13,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import org.apache.http.util.ByteArrayBuffer;
+import org.gnu.salish.progress.ProgressTracker;
 
 import android.util.Log;
 
@@ -55,7 +56,7 @@ public final class ZipUtil {
     }
 
     public static void compressDirectory(File dir, File dest,
-            AtomicBoolean whileTrue) throws IOException {
+            AtomicBoolean whileTrue, ProgressTracker tracker) throws IOException {
         if (dir == null || dest == null)
             throw new IllegalArgumentException("no parameter may be null");
 
@@ -65,8 +66,10 @@ public final class ZipUtil {
         FileOutputStream fos = new FileOutputStream(dest);
         ZipOutputStream out = new ZipOutputStream(new BufferedOutputStream(fos));
 
-        FinnrApp.updateProgressBarMessage("Compressing final APK");
-        FinnrApp.incrementProgressBarProgress(1);
+        if (tracker != null) {
+            tracker.updateProgressBarMessage("Compressing final APK");
+            tracker.incrementProgressBarProgress(1);
+        }
 
         String topLevelPath = dir.getCanonicalPath();
         if (!topLevelPath.endsWith("/"))
