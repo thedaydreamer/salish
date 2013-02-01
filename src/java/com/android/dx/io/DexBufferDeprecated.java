@@ -57,7 +57,8 @@ import com.android.dx.util.Mutf8;
  * The bytes of a dex file in memory for reading and writing. All int offsets
  * are unsigned.
  */
-public final class DexBuffer {
+@Deprecated
+public final class DexBufferDeprecated {
 
     public static final String LOG_TAG = "R3.DexBuffer";
 
@@ -224,7 +225,7 @@ public final class DexBuffer {
     /**
      * Creates a new dex buffer defining no classes.
      */
-    public DexBuffer() {
+    public DexBufferDeprecated() {
         this.data = new byte[0];
     }
 
@@ -232,7 +233,7 @@ public final class DexBuffer {
      * Creates a new dex buffer that reads from {@code data}. It is an error to
      * modify {@code data} after using it to create a dex buffer.
      */
-    public DexBuffer(byte[] data) throws IOException {
+    public DexBufferDeprecated(byte[] data) throws IOException {
         this.data = data;
         this.length = data.length;
         this.tableOfContents.readFrom(this);
@@ -241,7 +242,7 @@ public final class DexBuffer {
     /**
      * Creates a new dex buffer of the dex in {@code in}, and closes {@code in}.
      */
-    public DexBuffer(InputStream in) throws IOException {
+    public DexBufferDeprecated(InputStream in) throws IOException {
         loadFrom(in);
     }
 
@@ -250,7 +251,7 @@ public final class DexBuffer {
     /**
      * Creates a new dex buffer from the dex file {@code file}.
      */
-    public DexBuffer(File file) throws IOException {
+    public DexBufferDeprecated(File file) throws IOException {
         if (FileUtils.hasArchiveSuffix(file.getName())) {
             ZipFile zipFile = new ZipFile(file);
             ZipEntry entry = zipFile.getEntry(DexFormat.DEX_IN_JAR_NAME);

@@ -32,7 +32,6 @@ import java.util.zip.Adler32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-import schilling.richard.dalvik.vm.DvmGlobals;
 import schilling.richard.dalvik.vm.oo.util.ClassDefFactory;
 import schilling.richard.dalvik.vm.oo.util.ClassLoaderUtil;
 

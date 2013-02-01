@@ -25,7 +25,7 @@ import java.util.List;
 import schilling.richard.dalvik.vm.analysis.DexSwapVerify;
 import schilling.richard.dalvik.vm.oo.VerifyException;
 import schilling.richard.dexlib.inject.InjectException;
-import org.gnu.salish.debug.util.FinnrApp;
+import schilling.richard.r3.app.FinnrApp;
 import android.util.Log;
 import android.util.SparseIntArray;
 
