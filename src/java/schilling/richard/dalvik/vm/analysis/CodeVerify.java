@@ -1312,7 +1312,7 @@ public class CodeVerify {
 				declaringClassSig);
 		ClassData cData = instruction.getBuffer().readClassData(declaringClass);
 		ClassData.Field[] cFields = cData.allFields();
-		List<FieldId> fieldIds = instruction.getBuffer().fieldIds();
+		List<FieldId> fieldIds = instruction.getBuffer().fieldIds;
 
 		ClassData.Field instField = null;
 		for (ClassData.Field field : cFields) {

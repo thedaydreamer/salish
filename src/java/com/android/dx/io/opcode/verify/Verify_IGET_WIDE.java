@@ -18,7 +18,7 @@ public class Verify_IGET_WIDE implements OpcodeVerifier {
 	public void verify(DecodedInstruction instruction,
 			RegisterTypeSparseArray registerTypes) throws VerifyException {
 
-		List<FieldId> fieldIds = instruction.getBuffer().fieldIds();
+		List<FieldId> fieldIds = instruction.getBuffer().fieldIds;
 
 		RegisterType objType = registerTypes.get(instruction.getB(),
 				instruction);

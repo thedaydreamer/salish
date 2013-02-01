@@ -2164,7 +2164,7 @@ public abstract class DecodedInstruction {
             case STRING_REF:
                 return getBuffer().strings().get(getIndex());
             case FIELD_REF:
-                FieldId fId = getBuffer().fieldIds().get(getIndex());
+                FieldId fId = getBuffer().fieldIds.get(getIndex());
                 return String.format("%s in %s", fId.getType(), fId.getName(),
                         fId.getDeclaringClassType());
             default:

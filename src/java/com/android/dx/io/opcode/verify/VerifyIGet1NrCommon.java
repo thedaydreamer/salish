@@ -35,7 +35,7 @@ public abstract class VerifyIGet1NrCommon implements OpcodeVerifier {
 				instruction);
 		ClassData.Field instField = CodeVerify.getInstField(instruction,
 				registerTypes, objType, instruction.getC());
-		List<FieldId> fields = instruction.getBuffer().fieldIds();
+		List<FieldId> fields = instruction.getBuffer().fieldIds;
 		FieldId fId = fields.get(instField.getFieldIndex());
 		String fieldSig = fId.getType();
 

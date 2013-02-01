@@ -17,6 +17,7 @@
 package com.android.dx.io;
 
 import com.android.dx.io.dexbuffer.DexBuffer;
+import com.android.dx.io.dexbuffer.Section;
 import com.android.dx.util.Unsigned;
 
 public final class FieldId implements Comparable<FieldId> {
@@ -70,7 +71,7 @@ public final class FieldId implements Comparable<FieldId> {
 																// 0
 	}
 
-	public void writeTo(DexBuffer.Section out) {
+	public void writeTo(Section out) {
 		out.writeUnsignedShort(declaringClassIndex);
 		out.writeUnsignedShort(typeIndex);
 		out.writeInt(nameIndex);

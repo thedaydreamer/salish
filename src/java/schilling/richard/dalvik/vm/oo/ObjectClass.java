@@ -115,7 +115,7 @@ public class ObjectClass extends Clazz {
 		if (cData == null)
 			return;
 
-		List<FieldId> fields = buffer.fieldIds();
+		List<FieldId> fields = buffer.fieldIds;
 
 		List<MethodId> methods = buffer.methodIds();
 		List<ProtoId> protos = buffer.protoIds();

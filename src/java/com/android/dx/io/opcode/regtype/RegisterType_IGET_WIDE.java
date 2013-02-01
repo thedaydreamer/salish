@@ -21,7 +21,7 @@ public class RegisterType_IGET_WIDE extends RegisterTypeSetter {
 	public void setRegisterTypes(DecodedInstruction instruction,
 			RegisterTypeSparseArray registerTypes) {
 
-		List<FieldId> fieldIds = instruction.getBuffer().fieldIds();
+		List<FieldId> fieldIds = instruction.getBuffer().fieldIds;
 
 		RegisterType objType = registerTypes.get(instruction.getB(),
 				instruction);

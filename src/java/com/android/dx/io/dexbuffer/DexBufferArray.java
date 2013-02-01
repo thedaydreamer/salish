@@ -239,8 +239,6 @@ public final class DexBufferArray extends DexBuffer {
             position = start;
         }
 
-        
-
         /**
          * Returns the position that will be set if reset() is called.
          * 
@@ -446,9 +444,9 @@ public final class DexBufferArray extends DexBuffer {
             }
 
             int catchAllAddress = size <= 0 ? readUleb128() : -1;
-            Code.CatchHandler result = new Code.CatchHandler(handlerOffset,
+            Code.CatchHandler result = new Code.CatchHandler(
                     typeIndexes,
-                    typeSignatures, addresses, catchAllAddress);
+                    typeSignatures, addresses, catchAllAddress, handlerOffset);
 
             return result;
 
@@ -728,7 +726,6 @@ public final class DexBufferArray extends DexBuffer {
 
     }
 
-    
     /**
      * Returns the signature of all but the first 32 bytes of {@code dex}. The
      * first 32 bytes of dex files are not specified to be included in the

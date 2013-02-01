@@ -26,53 +26,54 @@ import com.android.dx.io.dexbuffer.DexBuffer;
 /**
  * Generates and stores the checksum and signature of a dex file.
  */
+@Deprecated
 public final class DexHasher {
 
-	private static final int CHECKSUM_OFFSET = 8;
-	private static final int CHECKSUM_SIZE = 4;
-	private static final int SIGNATURE_OFFSET = CHECKSUM_OFFSET + CHECKSUM_SIZE;
-	private static final int SIGNATURE_SIZE = 20;
+    private static final int CHECKSUM_OFFSET = 8;
+    private static final int CHECKSUM_SIZE = 4;
+    private static final int SIGNATURE_OFFSET = CHECKSUM_OFFSET + CHECKSUM_SIZE;
+    private static final int SIGNATURE_SIZE = 20;
 
-	/**
-	 * Returns the signature of all but the first 32 bytes of {@code dex}. The
-	 * first 32 bytes of dex files are not specified to be included in the
-	 * signature.
-	 */
-	public byte[] computeSignature(DexBuffer dex) throws IOException {
-		MessageDigest digest;
-		try {
-			digest = MessageDigest.getInstance("SHA-1");
-		} catch (NoSuchAlgorithmException e) {
-			throw new AssertionError();
-		}
-		int offset = SIGNATURE_OFFSET + SIGNATURE_SIZE;
+    /**
+     * Returns the signature of all but the first 32 bytes of {@code dex}. The
+     * first 32 bytes of dex files are not specified to be included in the
+     * signature.
+     */
+    public byte[] computeSignature(DexBuffer dex) throws IOException {
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-1");
+        } catch (NoSuchAlgorithmException e) {
+            throw new AssertionError();
+        }
+        int offset = SIGNATURE_OFFSET + SIGNATURE_SIZE;
 
-		byte[] bytes = dex.getBytes();
-		digest.update(bytes, offset, bytes.length - offset);
-		return digest.digest();
-	}
+        byte[] bytes = dex.getBytes();
+        digest.update(bytes, offset, bytes.length - offset);
+        return digest.digest();
+    }
 
-	/**
-	 * Returns the checksum of all but the first 12 bytes of {@code dex}.
-	 */
-	public int computeChecksum(DexBuffer dex) throws IOException {
-		Adler32 adler32 = new Adler32();
-		int offset = CHECKSUM_OFFSET + CHECKSUM_SIZE;
+    /**
+     * Returns the checksum of all but the first 12 bytes of {@code dex}.
+     */
+    public int computeChecksum(DexBuffer dex) throws IOException {
+        Adler32 adler32 = new Adler32();
+        int offset = CHECKSUM_OFFSET + CHECKSUM_SIZE;
 
-		byte[] bytes = dex.getBytes();
-		adler32.update(bytes, offset, bytes.length - offset);
-		return (int) adler32.getValue();
-	}
+        byte[] bytes = dex.getBytes();
+        adler32.update(bytes, offset, bytes.length - offset);
+        return (int) adler32.getValue();
+    }
 
-	/**
-	 * Generates the signature and checksum of the dex file {@code out} and
-	 * writes them to the file.
-	 */
-	public void writeHashes(DexBuffer dex) throws IOException {
-		byte[] signature = computeSignature(dex);
-		dex.open(SIGNATURE_OFFSET).write(signature);
+    /**
+     * Generates the signature and checksum of the dex file {@code out} and
+     * writes them to the file.
+     */
+    public void writeHashes(DexBuffer dex) throws IOException {
+        byte[] signature = computeSignature(dex);
+        dex.open(SIGNATURE_OFFSET).write(signature);
 
-		int checksum = computeChecksum(dex);
-		dex.open(CHECKSUM_OFFSET).writeInt(checksum);
-	}
+        int checksum = computeChecksum(dex);
+        dex.open(CHECKSUM_OFFSET).writeInt(checksum);
+    }
 }

@@ -59,7 +59,7 @@ public final class DexFileBuilder {
     }
 
     public void add_type_ids(DexBuffer buffer) {
-        List<Integer> typeIds = buffer.typeIds();
+        List<Integer> typeIds = buffer.typeIds;
         List<String> strings = buffer.strings();
         for (Integer typeId : typeIds) {
             String s = strings.get(typeId.intValue());
@@ -93,7 +93,7 @@ public final class DexFileBuilder {
     }
 
     public void add_field_ids(DexBuffer buffer) {
-        List<FieldId> fIdentifiers = buffer.fieldIds();
+        List<FieldId> fIdentifiers = buffer.fieldIds;
         List<String> types = buffer.typeNames();
         List<String> strings = buffer.strings();
 

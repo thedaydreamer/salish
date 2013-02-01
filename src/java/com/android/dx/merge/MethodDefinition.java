@@ -24,7 +24,7 @@ import schilling.richard.dalvik.vm.analysis.RegisterTypeSparseArray;
 import schilling.richard.dalvik.vm.analysis.VerifyErrorCause;
 import schilling.richard.dalvik.vm.oo.VerifyException;
 import schilling.richard.dexlib.inject.InjectException;
-import schilling.richard.dexlib.inject.InjectUtil;
+
 import android.util.Log;
 import android.util.SparseIntArray;
 
@@ -55,6 +55,7 @@ import com.android.dx.rop.code.RegisterSpecList;
  * 
  * @author rschilling
  */
+@Deprecated
 public class MethodDefinition {
 
     /**
@@ -285,23 +286,6 @@ public class MethodDefinition {
      * @return true if this function will be injected by DexInjectedMerger.
      */
     public boolean isInjectMethod() {
-
-        // all injector methods reside in one package.
-        if (!classDef().getSignature().startsWith(
-                DexInjectMerger.INJECTOR_CLASS_PACKAGE))
-            return false;
-
-        String methodName = methodId().getName();
-
-        // method names are unique to one method in the package.
-        if (methodName.equals(DexInjectMerger.INJECT_FUNCTION))
-            return true;
-
-        if (methodName.equals(DexInjectMerger.INJECT_STATIC_FUNCTION))
-            return true;
-
-        if (methodName.equals(DexInjectMerger.INJECT_HTTP_FUNCTION))
-            return true;
 
         return false;
 
@@ -1603,15 +1587,10 @@ public class MethodDefinition {
      * 
      * @param instructions
      */
+    @Deprecated
     public void removeReturnInstruction() {
 
-        InstructionList iList = instructionsDecodedAsList();
-
-        int address = InjectUtil.findReturnAddress(iList);
-        DecodedInstruction NOP = DecodedInstructionFactory.NOP(address);
-        NOP.setMethodDef(this);
-        iList.put(address, NOP);
-        replaceInstructions(iList);
+        throw new UnsupportedOperationException("no longer supported");
 
     }
 

@@ -179,7 +179,7 @@ public class DexSwapVerify {
 	 */
 	public static void swapTriesAndCatches(DexBuffer buf,
 			ClassData.Method method) throws VerifyException {
-		List<Integer> types = buf.typeIds();
+		List<Integer> types = buf.typeIds;
 		Code code = buf.readCode(method);
 		swapTriesAndCatches(method, code, types);
 

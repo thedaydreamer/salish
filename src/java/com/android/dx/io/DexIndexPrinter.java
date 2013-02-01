@@ -26,6 +26,8 @@ import android.util.Log;
 
 import com.android.dx.dex.TableOfContents;
 import com.android.dx.io.dexbuffer.DexBuffer;
+import com.android.dx.io.dexbuffer.DexBufferRandomAccessFile;
+import com.android.dx.io.dexbuffer.Section;
 
 /**
  * Executable that prints all indices of a dex file.
@@ -37,17 +39,17 @@ public final class DexIndexPrinter {
     private final TableOfContents tableOfContents;
 
     public DexIndexPrinter(File file) throws IOException {
-        this.dexBuffer = new DexBuffer(file);
+        this.dexBuffer = new DexBufferRandomAccessFile(file);
         this.tableOfContents = dexBuffer.getTableOfContents();
     }
 
     private void printMap() {
-        for (TableOfContents.Section section : tableOfContents.sections) {
+        for (TableOfContents.TOCSection section : tableOfContents.sections) {
             if (section.off != -1) {
                 if (DO_LOG)
                     Log.i(LOG_TAG, "section "
                             + Integer.toHexString(section.type) + " "
-                            + TableOfContents.Section.toName(section.type)
+                            + TableOfContents.TOCSection.toName(section.type)
                             + " off=" + Integer.toHexString(section.off) + " size="
                             + Integer.toHexString(section.size) + " byteCount="
                             + Integer.toHexString(section.byteCount));
@@ -67,7 +69,7 @@ public final class DexIndexPrinter {
 
     private void printTypeIds() throws IOException {
         int index = 0;
-        for (Integer type : dexBuffer.typeIds()) {
+        for (Integer type : dexBuffer.typeIds) {
             if (DO_LOG)
                 Log.i(LOG_TAG, "type " + index + ": "
                         + dexBuffer.strings().get(type));
@@ -86,7 +88,7 @@ public final class DexIndexPrinter {
 
     private void printFieldIds() throws IOException {
         int index = 0;
-        for (FieldId fieldId : dexBuffer.fieldIds()) {
+        for (FieldId fieldId : dexBuffer.fieldIds) {
             if (DO_LOG)
                 Log.i(LOG_TAG, "field " + index + ": " + fieldId);
             index++;
@@ -108,7 +110,7 @@ public final class DexIndexPrinter {
                 Log.i(LOG_TAG, "No type lists");
             return;
         }
-        DexBuffer.Section in = dexBuffer.open(tableOfContents.typeLists.off);
+        Section in = dexBuffer.open(tableOfContents.typeLists.off);
         for (int i = 0; i < tableOfContents.typeLists.size; i++) {
             int size = in.readInt();
             if (DO_LOG)

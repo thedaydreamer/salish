@@ -39,6 +39,8 @@ import com.android.dx.io.FieldId;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
 import com.android.dx.io.dexbuffer.DexBuffer;
+import com.android.dx.io.dexbuffer.DexBufferArray;
+import com.android.dx.io.dexbuffer.Section;
 import com.android.dx.util.DexException;
 
 /**
@@ -85,38 +87,38 @@ public class DexMerger {
     protected final CollisionPolicy collisionPolicy;
     protected final WriterSizes writerSizes;
 
-    protected final DexBuffer dexOut = new DexBuffer();
+    protected final DexBuffer dexOut = new DexBufferArray();
 
-    protected final DexBuffer.Section headerOut;
+    protected final Section headerOut;
 
     /** All IDs and definitions sections */
-    protected final DexBuffer.Section idsDefsOut;
+    protected final Section idsDefsOut;
 
-    protected final DexBuffer.Section mapListOut;
+    protected final Section mapListOut;
 
-    protected final DexBuffer.Section typeListOut;
+    protected final Section typeListOut;
 
-    protected final DexBuffer.Section classDataOut;
+    protected final Section classDataOut;
 
-    protected final DexBuffer.Section codeOut;
+    protected final Section codeOut;
 
-    protected final DexBuffer.Section stringDataOut;
+    protected final Section stringDataOut;
 
-    protected final DexBuffer.Section debugInfoOut;
+    protected final Section debugInfoOut;
 
-    protected final DexBuffer.Section encodedArrayOut;
+    protected final Section encodedArrayOut;
 
     /** annotations directory on a type */
-    protected final DexBuffer.Section annotationsDirectoryOut;
+    protected final Section annotationsDirectoryOut;
 
     /** sets of annotations on a member, parameter or type */
-    protected final DexBuffer.Section annotationSetOut;
+    protected final Section annotationSetOut;
 
     /** parameter lists */
-    protected final DexBuffer.Section annotationSetRefListOut;
+    protected final Section annotationSetRefListOut;
 
     /** individual annotations, each containing zero or more fields */
-    protected final DexBuffer.Section annotationOut;
+    protected final Section annotationOut;
 
     protected final TableOfContents contentsOut;
 
@@ -325,7 +327,7 @@ public class DexMerger {
                 FinnrApp.updateProgressBarMessage(statusPrefix + ": optimizing");
             }
 
-            DexMerger compacter = new DexMerger(dexOut, new DexBuffer(),
+            DexMerger compacter = new DexMerger(dexOut, new DexBufferArray(),
                     CollisionPolicy.FAIL, compactedSizes);
             result = compacter.mergeDexBuffers(null);
             System.out
@@ -427,9 +429,9 @@ public class DexMerger {
      */
     abstract class IdMerger<T extends Comparable<T>> {
 
-        private final DexBuffer.Section out;
+        private final Section out;
 
-        protected IdMerger(DexBuffer.Section out) {
+        protected IdMerger(Section out) {
             this.out = out;
         }
 
@@ -440,15 +442,15 @@ public class DexMerger {
          * @throws InterruptedException if processing has been interrupted.
          */
         public final void mergeSorted() throws InterruptedException {
-            TableOfContents.Section aSection = getSection(dexA
+            TableOfContents.TOCSection aSection = getSection(dexA
                     .getTableOfContents());
-            TableOfContents.Section bSection = getSection(dexB
+            TableOfContents.TOCSection bSection = getSection(dexB
                     .getTableOfContents());
             getSection(contentsOut).off = out.getPosition();
 
-            DexBuffer.Section inA = aSection.exists() ? dexA.open(aSection.off)
+            Section inA = aSection.exists() ? dexA.open(aSection.off)
                     : null;
-            DexBuffer.Section inB = bSection.exists() ? dexB.open(bSection.off)
+            Section inB = bSection.exists() ? dexB.open(bSection.off)
                     : null;
             int aOffset = -1;
             int bOffset = -1;
@@ -552,7 +554,7 @@ public class DexMerger {
             }
 
             List<UnsortedValue> result = new ArrayList<UnsortedValue>();
-            DexBuffer.Section in = source.open(section.off);
+            Section in = source.open(section.off);
             for (int i = 0; i < section.size; i++) {
                 int offset = in.getPosition();
                 T value = read(in, indexMap, 0);
@@ -564,7 +566,7 @@ public class DexMerger {
         abstract TableOfContents.Section getSection(
                 TableOfContents tableOfContents);
 
-        abstract T read(DexBuffer.Section in, IndexMap indexMap, int index);
+        abstract T read(Section in, IndexMap indexMap, int index);
 
         abstract void updateIndex(int offset, IndexMap indexMap, int oldIndex,
                 int newIndex);
@@ -608,12 +610,12 @@ public class DexMerger {
         new IdMerger<String>(idsDefsOut) {
 
             @Override
-            TableOfContents.Section getSection(TableOfContents tableOfContents) {
+            TableOfContents.TOCSection getSection(TableOfContents tableOfContents) {
                 return tableOfContents.stringIds;
             }
 
             @Override
-            String read(DexBuffer.Section in, IndexMap indexMap, int index) {
+            String read(Section in, IndexMap indexMap, int index) {
                 return in.readString();
             }
 
@@ -636,12 +638,12 @@ public class DexMerger {
         new IdMerger<Integer>(idsDefsOut) {
 
             @Override
-            TableOfContents.Section getSection(TableOfContents tableOfContents) {
+            TableOfContents.TOCSection getSection(TableOfContents tableOfContents) {
                 return tableOfContents.typeIds;
             }
 
             @Override
-            Integer read(DexBuffer.Section in, IndexMap indexMap, int index) {
+            Integer read(Section in, IndexMap indexMap, int index) {
                 int stringIndex = in.readInt();
                 return indexMap.adjustString(stringIndex);
             }
@@ -663,12 +665,12 @@ public class DexMerger {
         new IdMerger<TypeList>(typeListOut) {
 
             @Override
-            TableOfContents.Section getSection(TableOfContents tableOfContents) {
+            TableOfContents.TOCSection getSection(TableOfContents tableOfContents) {
                 return tableOfContents.typeLists;
             }
 
             @Override
-            TypeList read(DexBuffer.Section in, IndexMap indexMap, int index) {
+            TypeList read(Section in, IndexMap indexMap, int index) {
                 return indexMap.adjustTypeList(in.readTypeList());
             }
 
@@ -689,12 +691,12 @@ public class DexMerger {
         new IdMerger<ProtoId>(idsDefsOut) {
 
             @Override
-            TableOfContents.Section getSection(TableOfContents tableOfContents) {
+            TableOfContents.TOCSection getSection(TableOfContents tableOfContents) {
                 return tableOfContents.protoIds;
             }
 
             @Override
-            ProtoId read(DexBuffer.Section in, IndexMap indexMap, int index) {
+            ProtoId read(Section in, IndexMap indexMap, int index) {
                 return indexMap.adjust(in.readProtoId());
             }
 
@@ -715,12 +717,12 @@ public class DexMerger {
         new IdMerger<FieldId>(idsDefsOut) {
 
             @Override
-            TableOfContents.Section getSection(TableOfContents tableOfContents) {
+            TableOfContents.TOCSection getSection(TableOfContents tableOfContents) {
                 return tableOfContents.fieldIds;
             }
 
             @Override
-            FieldId read(DexBuffer.Section in, IndexMap indexMap, int index) {
+            FieldId read(Section in, IndexMap indexMap, int index) {
                 return indexMap.adjust(in.readFieldId());
             }
 
@@ -741,12 +743,12 @@ public class DexMerger {
         new IdMerger<MethodId>(idsDefsOut) {
 
             @Override
-            TableOfContents.Section getSection(TableOfContents tableOfContents) {
+            TableOfContents.TOCSection getSection(TableOfContents tableOfContents) {
                 return tableOfContents.methodIds;
             }
 
             @Override
-            MethodId read(DexBuffer.Section in, IndexMap indexMap, int index) {
+            MethodId read(Section in, IndexMap indexMap, int index) {
                 return indexMap.adjust(in.readMethodId());
             }
 
@@ -767,12 +769,12 @@ public class DexMerger {
         new IdMerger<Annotation>(annotationOut) {
 
             @Override
-            TableOfContents.Section getSection(TableOfContents tableOfContents) {
+            TableOfContents.TOCSection getSection(TableOfContents tableOfContents) {
                 return tableOfContents.annotations;
             }
 
             @Override
-            Annotation read(DexBuffer.Section in, IndexMap indexMap, int index) {
+            Annotation read(Section in, IndexMap indexMap, int index) {
                 return indexMap.adjust(in.readAnnotation());
             }
 
@@ -877,9 +879,9 @@ public class DexMerger {
     }
 
     private void transformAnnotationSets(DexBuffer in, IndexMap indexMap) {
-        TableOfContents.Section section = in.getTableOfContents().annotationSets;
+        TableOfContents.TOCSection section = in.getTableOfContents().annotationSets;
         if (section.exists()) {
-            DexBuffer.Section setIn = in.open(section.off);
+            Section setIn = in.open(section.off);
             for (int i = 0; i < section.size; i++) {
                 transformAnnotationSet(indexMap, setIn);
             }
@@ -887,9 +889,9 @@ public class DexMerger {
     }
 
     private void transformAnnotationDirectories(DexBuffer in, IndexMap indexMap) {
-        TableOfContents.Section section = in.getTableOfContents().annotationsDirectories;
+        TableOfContents.TOCSection section = in.getTableOfContents().annotationsDirectories;
         if (section.exists()) {
-            DexBuffer.Section directoryIn = in.open(section.off);
+            Section directoryIn = in.open(section.off);
             for (int i = 0; i < section.size; i++) {
                 transformAnnotationDirectory(in, directoryIn, indexMap);
             }
@@ -935,7 +937,7 @@ public class DexMerger {
         if (staticValuesOff == 0) {
             idsDefsOut.writeInt(0);
         } else {
-            DexBuffer.Section staticValuesIn = in.open(staticValuesOff);
+            Section staticValuesIn = in.open(staticValuesOff);
             idsDefsOut.writeInt(encodedArrayOut.getPosition());
             transformStaticValues(staticValuesIn, indexMap);
         }
@@ -945,7 +947,7 @@ public class DexMerger {
      * Transform all annotations on a class.
      */
     private void transformAnnotationDirectory(DexBuffer in,
-            DexBuffer.Section directoryIn, IndexMap indexMap) {
+            Section directoryIn, IndexMap indexMap) {
         contentsOut.annotationsDirectories.size++;
         annotationsDirectoryOut.assertFourByteAligned();
         indexMap.putAnnotationDirectoryOffset(directoryIn.getPosition(),
@@ -995,7 +997,7 @@ public class DexMerger {
             // annotations offset
             annotationsDirectoryOut.writeInt(annotationSetRefListOut
                     .getPosition());
-            DexBuffer.Section refListIn = in.open(directoryIn.readInt());
+            Section refListIn = in.open(directoryIn.readInt());
 
             // parameters
             int parameterCount = refListIn.readInt();
@@ -1011,7 +1013,7 @@ public class DexMerger {
      * Transform all annotations on a single type, member or parameter.
      */
     private void transformAnnotationSet(IndexMap indexMap,
-            DexBuffer.Section setIn) {
+            Section setIn) {
         contentsOut.annotationSets.size++;
         annotationSetOut.assertFourByteAligned();
         indexMap.putAnnotationSetOffset(setIn.getPosition(),
@@ -1112,7 +1114,7 @@ public class DexMerger {
 
         if (tries.length > 0) {
             if (newInstructions.length % 2 == 1) {
-                codeOut.writeShort((short) 0); // padding
+                codeOut.write((short) 0); // padding
             }
             for (Code.Try tryItem : tries) {
                 codeOut.writeInt(tryItem.getStartAddress());
@@ -1149,7 +1151,7 @@ public class DexMerger {
         }
     }
 
-    protected void transformStaticValues(DexBuffer.Section in, IndexMap indexMap) {
+    protected void transformStaticValues(Section in, IndexMap indexMap) {
         contentsOut.encodedArrays.size++;
         indexMap.adjustEncodedArray(in.readEncodedArray()).writeTo(
                 encodedArrayOut);
@@ -1356,8 +1358,8 @@ public class DexMerger {
             return;
         }
 
-        DexBuffer dexA = new DexBuffer(new File(args[1]));
-        DexBuffer dexB = new DexBuffer(new File(args[2]));
+        DexBuffer dexA = new DexBufferArray(new File(args[1]));
+        DexBuffer dexB = new DexBufferArray(new File(args[2]));
         DexBuffer merged = new DexMerger(dexA, dexB, CollisionPolicy.KEEP_FIRST)
                 .merge(null);
         merged.writeTo(new File(args[0]));
