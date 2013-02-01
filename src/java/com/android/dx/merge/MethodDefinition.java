@@ -47,7 +47,7 @@ import com.android.dx.io.instructions.PackedSwitchPayloadDecodedInstruction;
 import com.android.dx.io.opcode.OpcodeInfo;
 import com.android.dx.io.opcode.Opcodes;
 import com.android.dx.io.opcode.format.InstructionCodec;
-import com.android.dx.merge.Updater.BaseUpdater;
+
 import com.android.dx.rop.code.RegisterSpecList;
 
 /**
@@ -423,87 +423,6 @@ public class MethodDefinition {
             // result.set(i, registerTypes.valueAt(i).asRegisterSpec());
         }
         throw new UnsupportedOperationException("not implemented (yet)");
-
-    }
-
-    /**
-     * Injects a method (methodToInject) into this method at the specified
-     * address of this method. This object is modified. If updater is null it is
-     * ignored and methodToInject is not modified during the injection. If it is
-     * not null then methodToInject is modified for the injection and then reset
-     * back to its original state.
-     * 
-     * @param methodToInject the method to inject into this one.
-     * @param updater the updater to apply to the method prior to injection.
-     * @param address the address to inject at.
-     * @throws InjectException if the injection fails.
-     */
-    public boolean inject(MethodDefinition methodToInject, BaseUpdater updater,
-            int address) throws InjectException {
-
-        if (methodToInject == null)
-            throw new IllegalArgumentException("methodToInject cannot be null");
-
-        if (address < 0 || address >= code().getInstructions().length)
-            throw new InjectException("invalid address");
-
-        if (!hasClassData())
-            return false;
-
-        boolean thisIsStatic = this.method().dvmIsStaticMethod();
-        boolean injectedIsStatic = methodToInject.method().dvmIsStaticMethod();
-
-        if (thisIsStatic && !injectedIsStatic)
-            throw new InjectException(
-                    "this method is not static.  methodToInject must be non static.");
-
-        if (!thisIsStatic && injectedIsStatic)
-            throw new InjectException(
-                    "this method is static.  methodToInject must be static.");
-
-        if (updater == null)
-            // no address for injection can be obtained = no side effects
-            return true;
-
-        boolean result = false;
-
-        try {
-            this.mark(); // save state
-
-            updater.preInjectUpdate(this, address, methodToInject);
-            try {
-                result = injectWithRegisterAdjust(methodToInject, address);
-            } catch (Throwable ex) {
-
-                // FIXME catching throwables is bad, but thie is a prototype.
-                // This will be removed.
-                if (DO_LOG)
-                    Log.e(LOG_TAG,
-                            String.format(
-                                    "bailing on injection of %s into %s (class %s) due to DexException.",
-                                    methodToInject.methodId().getName(), methodId()
-                                            .getName(), methodId()
-                                            .getDeclaringClassSignature()));
-                ex.printStackTrace();
-                result = false;
-            }
-
-            if (result)
-                updater.postInjectUpdate(this, address);
-
-            return result;
-
-        } finally {
-
-            // reverts any side effects of injection process.
-            methodToInject.reset();
-
-            if (!result)
-                // injection may have left this method in an unpredictable
-                // state.
-                this.resetToMark();
-
-        }
 
     }
 
@@ -1114,17 +1033,6 @@ public class MethodDefinition {
      * This object saves
      */
     private Code mark;
-
-    /**
-     * Updates a method's instructions. This is usually called on a method that
-     * is injected into another method to set parameters, etc. prior to the
-     * injection.
-     * 
-     * @param updater the updater to apply against this MethodDefinition.
-     */
-    public void updateMethod(BaseUpdater updater) {
-
-    }
 
     /**
      * Called to reset the code to the state it was when this method definition
