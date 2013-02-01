@@ -1,0 +1,53 @@
+This package contains an in memory model of DEX file elements found in
+the package
+<code>com.android.dx.io</code>
+.
+
+<p>When these objects are created we are guaranteed that all reads
+	from the model will come from in-memory objects as opposed to being
+	read from a byte array. All strings are also placed in proper string
+	pools for faster access. Any of the dexlib object references kept in
+	the classes are merely to identify which object was used to create the
+	corresponding model object.
+<p>This model is used by the virtual machine implementaiton.
+<p>It aims to be as simple as possible and not try to track the
+	values of the DEX file that really should be calculated based on
+	underlying data (e.g. class structures)
+<p>Whe these objects are created, they generally take two types of
+	parameters: a pointer to the DexModel they are stored in, and a
+	reference to the DEX objects they are created from.
+<h3>Overall File Layout</h3>
+See the corresponding section in the web page
+http://source.android.com/tech/dalvik/dex-format.html
+
+<pre>
+header: all values are calculated by reading the model state.
+string_ids: built from DexBufferBuilder.strings.  All strings sorted in their natural order
+type_ids: built from DexBufferBuilder.types
+proto_ids: created by calls to Method.getProtoId().
+
+</pre>
+
+<h3>Use of the model</h3>
+The model is designed to convert the DEX file elements into an in memory
+model. One of the challenges with this is somewhat of a chicken and an
+egg problem. On the one hand, all the elements we need are present in
+the DEX file. On the other, it's not clear which blocks of code should
+load the data into the model and when. This is complicated further by
+the notion that in a true data model, the data items in a DEX file such
+as MethodId and ProtoId exist simply to tie all the data elements
+together. The model will not need these intermediate items. But rather,
+simply expect that they be there.
+
+<p>So, what general stragtegy do we use when loading a model? There
+	are a couple of ways to go about it.
+<ol>
+	<li>For each model element (Clazz, Method, etc...), pass in a DEX
+		file object and let that class load the dependencies.
+	<li>or, enforce an ordered loading of elements into the model and
+		forbid each of the model elements from loading anything from the DEX
+		file. If the required items that a model object needs is not present,
+		then throw an exception
+</ol>
+
+The option chosen is the second option.

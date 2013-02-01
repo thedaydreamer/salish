@@ -1,0 +1,12 @@
+This package implements a dalvik VM in Java.  It is being implemented in stages:
+
+<ol>
+<li>The code verification steps are ported from C.  See CodeVerify.cpp
+<li>The VM runtime is ported from C without the just in time compiler.
+<li>The Just in time compiler is ported from C, and or used as a JNI hook.
+<li>Hooks are added to the virtual machine to help with code analysis and debugging.
+</ol>
+
+In addition, documentation happens along the way to ensure that other people will get use out of the virtual machine.
+
+<p>The code in this package and its sub packages uses the class model in package schilling.richard.dalvik.model.

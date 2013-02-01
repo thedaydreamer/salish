@@ -1,0 +1,4511 @@
+package schilling.richard.dalvik.vm.analysis;
+
+import static schilling.richard.dalvik.vm.CodeVerifyConstants.checkMergeTab;
+import static schilling.richard.dalvik.vm.CodeVerifyConstants.kExtraRegs;
+import static schilling.richard.dalvik.vm.OpcodeFlag.kInstrCanThrow;
+import static schilling.richard.dalvik.vm.analysis.CodeVerifyRegisterTypeCategory.kTypeCategory1nr;
+import static schilling.richard.dalvik.vm.analysis.CodeVerifyRegisterTypeCategory.kTypeCategory2;
+import static schilling.richard.dalvik.vm.analysis.CodeVerifyRegisterTypeCategory.kTypeCategoryRef;
+import static schilling.richard.dalvik.vm.analysis.DumpRegisterType.DRT_SHOW_LOCALS;
+import static schilling.richard.dalvik.vm.analysis.DumpRegisterType.DRT_SHOW_REF_TYPES;
+import static schilling.richard.dalvik.vm.analysis.DumpRegisterType.SHOW_REG_DETAILS;
+import static schilling.richard.dalvik.vm.analysis.RegisterMapMode.kRegisterMapModeLivePrecise;
+import static schilling.richard.dalvik.vm.analysis.RegisterTrackingMode.kTrackRegsBranches;
+import static schilling.richard.dalvik.vm.analysis.RegisterTrackingMode.kTrackRegsGcPoints;
+import static schilling.richard.dalvik.vm.analysis.VerifyErrorCause.VERIFY_ERROR_GENERIC;
+import static schilling.richard.dalvik.vm.analysis.VerifyErrorCause.VERIFY_ERROR_INSTANTIATION;
+import static schilling.richard.dalvik.vm.analysis.VerifyErrorCause.VERIFY_ERROR_NONE;
+import static schilling.richard.dalvik.vm.analysis.op.GenDexOpcodes.*;
+import static schilling.richard.dalvik.vm.oo.MethodType.METHOD_DIRECT;
+import static schilling.richard.dalvik.vm.oo.MethodType.METHOD_INTERFACE;
+import static schilling.richard.dalvik.vm.oo.MethodType.METHOD_STATIC;
+import static schilling.richard.dalvik.vm.oo.MethodType.METHOD_VIRTUAL;
+import static schilling.richard.dalvik.vm.oo.predefined.BoxClasses.SIG_VOID;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeBoolean;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeByte;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeChar;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeConflict;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeConstHi;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeConstLo;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeDoubleHi;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeDoubleLo;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeFloat;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeInteger;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeLongHi;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeLongLo;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeOne;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypePosByte;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypePosShort;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeShort;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeUninit;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeUnknown;
+import static schilling.richard.dexlib.verifier.RegisterType.kRegTypeZero;
+import static schilling.richard.dalvik.vm.OpcodeFlag.*;
+
+import java.util.List;
+
+import schilling.richard.dalvik.vm.BitVector;
+import schilling.richard.dalvik.vm.CodeVerifyConstants;
+import schilling.richard.dalvik.vm.DvmGlobals;
+import schilling.richard.dalvik.vm.Init;
+import schilling.richard.dalvik.vm.InstructionList;
+import schilling.richard.dalvik.vm.PrimitiveType;
+import schilling.richard.dalvik.vm.oo.ArrayClass;
+import schilling.richard.dalvik.vm.oo.Clazz;
+import schilling.richard.dalvik.vm.oo.DexModel;
+import schilling.richard.dalvik.vm.oo.Field;
+import schilling.richard.dalvik.vm.oo.Method;
+import schilling.richard.dalvik.vm.oo.MethodType;
+import schilling.richard.dalvik.vm.oo.ObjectClass;
+import schilling.richard.dalvik.vm.oo.PrimitiveClass;
+import schilling.richard.dalvik.vm.oo.VerifyException;
+import schilling.richard.dalvik.vm.oo.predefined.PredefinedClasses;
+import schilling.richard.dexlib.Code.InstrUtils;
+import schilling.richard.dexlib.verifier.RegisterType;
+import android.R.bool;
+import android.util.Log;
+import android.util.SparseArray;
+
+import com.android.dx.io.Code.CatchHandler;
+import com.android.dx.io.instructions.DecodedInstruction;
+
+import dalvik.bytecode.Opcodes;
+
+/**
+ * 
+ * <p>
+ * Used the objects in the package schilling.richard.dalvik.vm.oo to analyze the
+ * code.
+ * <p>
+ * Dalvik bytecode structural verifier. The only public entry point (except for
+ * a few shared utility functions) is dvmVerifyCodeFlow().
+ * 
+ * TODO: might benefit from a signature-->class lookup cache. Could avoid some
+ * string-peeling and wouldn't need to compute hashes.
+ * 
+ * <p>
+ * An implementation of the CodeVerify.cpp module in Java. This module is found
+ * in the Dalvik VM and is used to verify code that is loaded into the VM. Any
+ * code we touch needs to pass the tests in CodeVerify.cpp and, ergo, this file
+ * as well.
+ * <p>
+ * This is as much of a direct port of the logic as possible.
+ * <p>
+ * Other projects have tried to do something similar (e.g. smali), but I think
+ * the approach found in the .cpp module is a little more straightforward.
+ * 
+ * 
+ * 
+ * 
+ * @author rschilling
+ */
+public class CodeVerify {
+
+	/**
+	 * Table that maps uninitialized instances to classes, based on the address
+	 * of the new-instance instruction. One per method.
+	 * <p>
+	 * The integer is the code offset, or -1 for method ara ("this").
+	 * <p>
+	 * The object is the class created at that address.
+	 */
+	public SparseArray<Clazz> UninitInstanceMap = new SparseArray<Clazz>();
+
+	/*
+	 * InsnFlags is a 32-bit integer with the following layout: 0-15 instruction
+	 * length (or 0 if this address doesn't hold an opcode) 16-31 single bit
+	 * flags: InTry: in "try" block; exceptions thrown here may be caught
+	 * locally BranchTarget: other instructions can branch to this instruction
+	 * GcPoint: this instruction is a GC safe point Visited: verifier has
+	 * examined this instruction at least once Changed: set/cleared as bytecode
+	 * verifier runs
+	 */
+	// typedef u4 InsnFlags;
+	// TODO verify that an int is 4 bytes.
+
+	/**
+	 * Various bits of data used by the verifier and register map generator.
+	 */
+	public static final class VerifierData {
+
+		/*
+		 * The method we're working on.
+		 */
+		public Method method;
+
+		/**
+		 * Uninitialized instance map, used for tracking the movement of objects
+		 * that have been allocated but not initialized.
+		 */
+		public UninitInstanceMap uninitMap = new UninitInstanceMap();
+
+		/**
+		 * Array of RegisterLine structs, one entry per code unit. We only need
+		 * entries for code units that hold the start of an "interesting"
+		 * instruction. For register map generation, we're only interested in GC
+		 * points.
+		 */
+		public SparseArray<RegisterLine> registerLines = new SparseArray<RegisterLine>();
+
+		// TODO: What's the purpose of having a regType sparse array here and
+		// also in registerLines?
+		public SparseArray<RegType> regTypes = new SparseArray<RegType>();
+
+		/*
+		 * The number of occurrences of specific opcodes.
+		 */
+		int newInstanceCount;
+		public int monitorEnterCount;
+
+		/*
+		 * Array of pointers to basic blocks, one entry per code unit. Used for
+		 * liveness analysis.
+		 */
+		public SparseArray<VfyBasicBlock> basicBlocks;
+
+		/*
+		 * Number of code units of instructions in the method. A cache of the
+		 * value calculated by dvmGetMethodInsnsSize().
+		 */
+		public int insnsSize() {
+			return method.instructions().length;
+		}
+
+		/*
+		 * Number of registers we track for each instruction. This is equal to
+		 * the method's declared "registersSize". (Does not include the pending
+		 * return value.)
+		 */
+		public int insnRegCount() {
+			return method.getRegistersSize();
+		}
+
+	};
+
+	/**
+	 * Create a new uninitialized instance map.
+	 * <p>
+	 * The map is allocated and populated with address entries. The addresses
+	 * appear in ascending order to allow binary searching.
+	 * <p>
+	 * Very few methods have 10 or more new-instance instructions; the majority
+	 * have 0 or 1. Occasionally a static initializer will have 200+.
+	 * <p>
+	 * TODO: merge this into the static pass or initRegisterTable; want to avoid
+	 * walking through the instructions yet again just to set up this table
+	 */
+	SparseArray<Clazz> dvmCreateUninitInstanceMap(Method meth, int[] insnFlags,
+			short[] insns, int newInstanceCount) {
+
+		InstructionList instructions = InstructionList.allocate(insns);
+
+		SparseArray<Clazz> uninitMap = new SparseArray<Clazz>();
+		boolean isInit = false;
+
+		if (meth.isInitMethod()) {
+			newInstanceCount++;
+			isInit = true;
+		}
+
+		/*
+		 * Run through and find the new-instance instructions.
+		 */
+
+		for (int i = 0; i < instructions.size(); i++) {
+			int addr = instructions.keyAt(i);
+			DecodedInstruction inst = (DecodedInstruction) instructions.get(i);
+			int opcode = inst.getOpcode();
+			if (opcode == Opcodes.OP_NEW_INSTANCE
+					|| opcode == Opcodes.OP_NEW_INSTANCE_JUMBO)
+				uninitMap.put(addr, null);
+
+		}
+
+		return uninitMap;
+	}
+
+	/*
+	 * Release the storage associated with an UninitInstanceMap.
+	 */
+	void dvmFreeUninitInstanceMap(SparseArray<Clazz> uninitMap) {
+		throw new UnsupportedOperationException(
+				"this is a no-op function in this version.");
+	}
+
+	public static final String LOG_TAG = "CodeVerify";
+
+	/*
+	 * Verify bytecode in "meth". "insnFlags" should be populated with
+	 * instruction widths and "in try" flags. Entry point for the detailed
+	 * code-flow analysis of a single method. <p> In the C program, the pointer
+	 * to the start of the Dex File is
+	 */
+	boolean dvmVerifyCodeFlow(VerifierData vdata) throws VerifyException {
+
+		boolean result = false;
+		boolean generateRegisterMap = DvmGlobals.gDvm.generateRegisterMaps;
+
+		int insnsSize = vdata.insnsSize();
+		Method meth = vdata.method;
+		int regSize = meth.getRegistersSize();
+		InstructionList instructions = meth.instructionList();
+
+		RegisterTable regTable = new RegisterTable();
+		vdata.registerLines = regTable.registerLines;
+
+		if (VERIFIER_STATS) {
+			DvmGlobals.gDvm.verifierStats.methodsExamined++;
+			if (vdata.monitorEnterCount > 0)
+				DvmGlobals.gDvm.verifierStats.monEnterMethods++;
+		}
+
+		/*
+		 * TODO: move this elsewhere -- we don't need to do this for every
+		 * method
+		 */
+		verifyPrep();
+
+		if (regSize * insnsSize > CODE_SIZE_WARN_LEVEL) {
+			Log.w(LOG_TAG, "VFY: warning: method is huge (regs=" + regSize
+					+ " insnsSize=" + insnsSize + ")");
+			/* might be bogus data, might be some huge generated method */
+		}
+
+		/*
+		 * Create register lists, and initialize them to "Unknown". If we're
+		 * also going to create the register map, we need to retain the register
+		 * lists for a larger set of addresses.
+		 */
+		if (!initRegisterTable(vdata, regTable,
+				generateRegisterMap ? kTrackRegsGcPoints : kTrackRegsBranches))
+			return false;
+
+		/*
+		 * Perform liveness analysis.
+		 * 
+		 * We can do this before or after the main verifier pass. The choice
+		 * affects whether or not we see the effects of verifier instruction
+		 * changes, i.e. substitution of throw-verification-error.
+		 * 
+		 * In practice the ordering doesn't really matter, because T-V-E just
+		 * prunes "can continue", creating regions of dead code (with
+		 * corresponding register map data that will never be used).
+		 */
+		if (generateRegisterMap
+				&& DvmGlobals.gDvm.registerMapMode == kRegisterMapModeLivePrecise) {
+			/*
+			 * Compute basic blocks and predecessor lists.
+			 */
+			if (!VfyBasicBlock.dvmComputeVfyBasicBlocks(vdata))
+				return result;
+
+			/*
+			 * Compute liveness.
+			 */
+			if (!Liveness.dvmComputeLiveness(vdata))
+				return result;
+		}
+
+		/*
+		 * Initialize the types of the registers that correspond to the method
+		 * arguments. We can determine this from the method signature.
+		 */
+		if (!setTypesFromSignature(vdata))
+			return result;
+
+		/*
+		 * Run the verifier.
+		 */
+		if (!doCodeVerification(vdata, regTable))
+			return result;
+
+		return true;
+	}
+
+	/*
+	 * Set the register types for the first instruction in the method based on
+	 * the method signature.
+	 * 
+	 * This has the side-effect of validating the signature.
+	 * 
+	 * Returns "true" on success.
+	 */
+	boolean setTypesFromSignature(VerifierData vdata) throws VerifyException {
+
+		int actualArgs, expectedArgs, argStart;
+
+		List<String> parameters = vdata.method.getParameters();
+
+		RegisterTable regTable = new RegisterTable();
+
+		argStart = vdata.method.getRegistersSize() - vdata.method.getInsSize();
+		expectedArgs = vdata.insnsSize(); /* long/double count as two */
+
+		actualArgs = 0;
+		if (argStart < 0)
+			throw new IllegalStateException(
+					"argument start location is invalid");
+
+		int addr = argStart + actualArgs;
+
+		/*
+		 * Include the "this" pointer.
+		 */
+		if (!vdata.method.dvmIsStaticMethod()) {
+
+			/*
+			 * If this is a constructor for a class other than java.lang.Object,
+			 * mark the first ("this") argument as uninitialized. This restricts
+			 * field access until the superclass constructor is called.
+			 */
+			if (vdata.method.isInitMethod()
+					&& vdata.method.getDeclaringClass().getSignature() != DvmGlobals.gDvm.JAVA_LANG_OBJECT_SIGNATURE) {
+				vdata.uninitMap.put(0, vdata.method.getDeclaringClass());
+				/*
+				 * int uidx = setUninitInstance(uninitMap,
+				 * CodeVerifyConstants.kUninitThisArgAddr, meth->clazz);
+				 * assert(uidx == 0);
+				 */
+
+				vdata.regTypes.put(addr, regTypeFromUninitIndex(0));
+
+				vdata.registerLines.put(addr, new RegisterLine());
+
+			} else {
+
+				vdata.registerLines.put(addr, new RegisterLine());
+				vdata.regTypes.put(addr,
+						regTypeFromClass((ObjectClass) vdata.method
+								.getDeclaringClass()));
+			}
+
+			actualArgs++;
+		}
+
+		for (String descriptorString : parameters) {
+
+			if (actualArgs >= expectedArgs) {
+
+				String logString = String.format(
+						"VFY: expected %d args, found more (%s)", expectedArgs,
+						descriptorString);
+				throw new RuntimeException(logString);
+			}
+			char descriptor = descriptorString.charAt(0);
+
+			switch (descriptor) {
+			case 'L':
+			case '[':
+			/*
+			 * We assume that reference arguments are initialized. The only way
+			 * it could be otherwise (assuming the caller was verified) is if
+			 * the current method is <init>, but in that case it's effectively
+			 * considered initialized the instant we reach here (in the sense
+			 * that we can return without doing anything or call virtual
+			 * methods).
+			 */
+			{
+				DexModel model = vdata.method.getModel();
+				ArrayClass clazz = (ArrayClass) model
+						.lookupClassByDescriptor(descriptorString);
+				vdata.regTypes.put(addr, regTypeFromClass(clazz));
+			}
+				actualArgs++;
+				break;
+			case 'Z':
+				vdata.regTypes.put(addr, new RegType(kRegTypeBoolean));
+				actualArgs++;
+				break;
+			case 'C':
+				vdata.regTypes.put(addr, new RegType(kRegTypeChar));
+				actualArgs++;
+				break;
+			case 'B':
+				vdata.regTypes.put(addr, new RegType(kRegTypeByte));
+				actualArgs++;
+				break;
+			case 'I':
+				vdata.regTypes.put(addr, new RegType(kRegTypeInteger));
+				actualArgs++;
+				break;
+			case 'S':
+				vdata.regTypes.put(addr, new RegType(kRegTypeShort));
+				actualArgs++;
+				break;
+			case 'F':
+				vdata.regTypes.put(addr, new RegType(kRegTypeFloat));
+				actualArgs++;
+				break;
+			case 'D':
+				vdata.regTypes.put(addr, new RegType(kRegTypeDoubleLo));
+				vdata.regTypes.put(addr + 1, new RegType(kRegTypeDoubleHi));
+				actualArgs += 2;
+				break;
+			case 'J':
+				vdata.regTypes.put(addr, new RegType(kRegTypeLongLo));
+				vdata.regTypes.put(addr + 1, new RegType(kRegTypeLongHi));
+				actualArgs += 2;
+				break;
+			default:
+				Log.v(LOG_TAG, String.format(
+						"VFY: bad signature '%s' for %s.%s", vdata.method
+								.getPrototype().toString(), vdata.method
+								.getDeclaringClass().getSignature(),
+						vdata.method.getMethodName()));
+				throw new VerifyError(String.format(
+						"VFY: unexpected signature type char '%c'", descriptor));
+			}
+		}
+
+		if (actualArgs != expectedArgs) {
+			Log.v(LOG_TAG, String.format("VFY: bad signature '%s' for %s.%s",
+					vdata.method.getPrototype().toString(), vdata.method
+							.getDeclaringClass().getSignature(), vdata.method
+							.getMethodName()));
+			throw new VerifyError(
+					String.format("VFY: expected %d args, found %d",
+							expectedArgs, actualArgs));
+		}
+
+		String descriptor = vdata.method.getReturnType(); // dexProtoGetReturnType(&meth->prototype);
+
+		/*
+		 * Validate return type. We don't do the type lookup; just want to make
+		 * sure that it has the right format. Only major difference from the
+		 * method argument format is that 'V' is supported.
+		 */
+		switch (descriptor.charAt(0)) {
+		case 'I':
+		case 'C':
+		case 'S':
+		case 'B':
+		case 'Z':
+		case 'V':
+		case 'F':
+		case 'D':
+		case 'J':
+			if (descriptor.length() > 1) {
+				Log.v(LOG_TAG, String.format(
+						"VFY: bad signature '%s' for %s.%s", vdata.method
+								.getPrototype().toString(), vdata.method
+								.getDeclaringClass().getSignature(),
+						vdata.method.getMethodName()));
+				throw new VerifyError(String.format(
+						"VFY: expected %d args, found %d", expectedArgs,
+						actualArgs));
+			}
+			break;
+		case '[':
+			int pos = descriptor.lastIndexOf('[') + 1;
+
+			if (descriptor.charAt(pos) == 'L') {
+				int term = descriptor.indexOf(';', pos);
+				if (term == -1) {
+					Log.v(LOG_TAG, String.format(
+							"VFY: bad signature '%s' for %s.%s", vdata.method
+									.getPrototype().toString(), vdata.method
+									.getDeclaringClass().getSignature(),
+							vdata.method.getMethodName()));
+					throw new VerifyError(String.format(
+							"VFY: expected %d args, found %d", expectedArgs,
+							actualArgs));
+				}
+			} else {
+				if (pos > descriptor.length() - 1) {
+					Log.v(LOG_TAG, String.format(
+							"VFY: bad signature '%s' for %s.%s", vdata.method
+									.getPrototype().toString(), vdata.method
+									.getDeclaringClass().getSignature(),
+							vdata.method.getMethodName()));
+					throw new VerifyError(String.format(
+							"VFY: expected %d args, found %d", expectedArgs,
+							actualArgs));
+				}
+
+			}
+			break;
+		case 'L':
+			/* could be more thorough here, but shouldn't be required */
+			if (!descriptor.endsWith(";")) {
+				Log.v(LOG_TAG, String.format(
+						"VFY: bad signature '%s' for %s.%s", vdata.method
+								.getPrototype().toString(), vdata.method
+								.getDeclaringClass().getSignature(),
+						vdata.method.getMethodName()));
+				throw new VerifyError(String.format(
+						"VFY: expected %d args, found %d", expectedArgs,
+						actualArgs));
+			}
+			break;
+		default:
+			throw new VerifyError(
+					String.format("VFY: expected %d args, found %d",
+							expectedArgs, actualArgs));
+		}
+
+		return true;
+
+	}
+
+	/* return the RegType for the uninitialized reference in slot "uidx" */
+	static RegType regTypeFromUninitIndex(int uidx) {
+		RegType result = new RegType();
+		result.unititialized = (RegisterType.kRegTypeUninit.asInt() | (uidx << CodeVerifyConstants.kRegTypeUninitShift));
+		return result;
+	}
+
+	/* convert the ClassObject pointer to an (initialized) register type */
+	public static RegType regTypeFromClass(Clazz clazz) {
+
+		RegType result = new RegType();
+		result.classObject = clazz;
+		return result;
+
+	}
+
+	/*
+	 * Initialize the RegisterTable.
+	 * 
+	 * Every instruction address can have a different set of information about
+	 * what's in which register, but for verification purposes we only need to
+	 * store it at branch target addresses (because we merge into that).
+	 * 
+	 * By zeroing out the regType storage we are effectively initializing the
+	 * register information to kRegTypeUnknown.
+	 * 
+	 * We jump through some hoops here to minimize the total number of
+	 * allocations we have to perform per method verified.
+	 */
+	static boolean initRegisterTable(VerifierData vdata,
+			RegisterTable regTable, RegisterTrackingMode trackRegsFor) {
+		Method meth = vdata.method;
+		int insnsSize = vdata.insnsSize();
+		int kExtraLines = 2; /* workLine, savedLine */
+		int i;
+		int insnCount = 0;
+
+		/*
+		 * Every address gets a RegisterLine struct. This is wasteful, but not
+		 * so much that it's worth chasing through an extra level of
+		 * indirection.
+		 */
+		regTable.insnRegCountPlus = vdata.insnRegCount() + kExtraRegs;
+		regTable.registerLines = new SparseArray<RegisterLine>();
+
+		if (insnsSize <= 0)
+			throw new IllegalStateException("instruction size <= 0");
+
+		/*
+		 * Count up the number of "interesting" instructions. Populate the
+		 * sparse register line table.
+		 * 
+		 * "All" means "every address that holds the start of an instruction".
+		 * "Branches" and "GcPoints" mean just those addresses.
+		 * 
+		 * "GcPoints" fills about half the addresses, "Branches" about 15%.
+		 */
+		int interestingCount = kExtraLines;
+		InstructionList iList = vdata.method.instructionList();
+
+		for (i = 0; i < insnsSize; i++) {
+			boolean interesting;
+
+			switch (trackRegsFor) {
+			case kTrackRegsAll:
+				interesting = iList.dvmInsnIsOpcode(i);
+				break;
+			case kTrackRegsGcPoints:
+				interesting = iList.dvmInsnIsGcPoint(i)
+						|| iList.dvmInsnIsBranchTarget(i);
+				break;
+			case kTrackRegsBranches:
+				interesting = iList.dvmInsnIsBranchTarget(i);
+				break;
+			default:
+				Init.dvmAbort();
+				return false;
+			}
+
+			if (interesting) {
+				interestingCount++;
+				regTable.registerLines.put(i, null);
+			}
+
+			/* count instructions, for display only */
+			if (iList.dvmInsnIsOpcode(i))
+				insnCount++;
+		}
+
+		/*
+		 * Allocate storage for the register type arrays.
+		 */
+
+		/*
+		 * Grab storage for our "temporary" register lines.
+		 */
+		regTable.workLine = new RegisterLine();
+		regTable.savedLine = new RegisterLine();
+		// TODO: workLine and savedLine may be created anew later?
+
+		String logString = String.format(
+				"Tracking registers for [%d], total %d in %d units",
+				trackRegsFor, interestingCount - kExtraLines, insnsSize);
+		Log.d(LOG_TAG, logString);
+
+		return true;
+	}
+
+	public static final int CODE_SIZE_WARN_LEVEL = 4 * 1024 * 1024;
+	public static final boolean DEAD_CODE_SCAN = true;
+
+	/*
+	 * One-time preparation.
+	 */
+	static void verifyPrep() {
+		/* only need to do this if the table was updated */
+		checkMergeTab();
+	}
+
+	public static RegType getInvocationThis(RegisterLine registerLine,
+			DecodedInstruction pDecInsn) throws VerifyException {
+		RegType thisType = new RegType(kRegTypeUnknown);
+
+		if (pDecInsn.getA() < 1) {
+			throw new VerifyException(VERIFY_ERROR_GENERIC,
+					"VFY: invoke lacks 'this'");
+		}
+
+		/* get the element type of the array held in vsrc */
+		thisType = getRegisterType(registerLine, pDecInsn.getC());
+		if (!thisType.regTypeIsReference()) {
+			throw new VerifyException(
+					VERIFY_ERROR_GENERIC,
+					String.format(
+							"VFY: tried to get class from non-ref register v%d (type=%d)",
+							pDecInsn.getC(), thisType));
+		}
+
+		return thisType;
+
+	}
+
+	/**
+	 * Verify that the contents of the specified register have the specified
+	 * type (or can be converted to it through an implicit widening conversion).
+	 * 
+	 * This will modify the type of the source register if it was originally
+	 * derived from a constant to prevent mixing of int/float and long/double.
+	 * 
+	 * If "vsrc" is a reference, both it and the "vsrc" register must be
+	 * initialized ("vsrc" may be Zero). This will verify that the value in the
+	 * register is an instance of checkType, or if checkType is an interface,
+	 * verify that the register implements checkType.
+	 * 
+	 * @throws VerifyException
+	 */
+	static void verifyRegisterType(RegisterLine registerLine, int vsrc,
+			RegType checkType) throws VerifyException {
+		RegType srcType = registerLine.regTypes.get(vsrc);
+
+		// LOGD("check-reg v%u = %d", vsrc, checkType);
+		switch (checkType.register) {
+		case kRegTypeFloat:
+		case kRegTypeBoolean:
+		case kRegTypePosByte:
+		case kRegTypeByte:
+		case kRegTypePosShort:
+		case kRegTypeShort:
+		case kRegTypeChar:
+		case kRegTypeInteger:
+			if (!CodeVerifyConstants.canConvertTo1nr(srcType, checkType))
+				throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+						"VFY: register1 v%u type %d, wanted %d", vsrc, srcType,
+						checkType));
+			/* Update type if result is float */
+			if (checkType.register == kRegTypeFloat) {
+				setRegisterType(registerLine, vsrc, checkType);
+			} else {
+				/* Update const type to actual type after use */
+				setRegisterType(registerLine, vsrc, srcType);
+			}
+			break;
+		case kRegTypeLongLo:
+		case kRegTypeDoubleLo:
+			if (registerLine.regTypes.get(vsrc + 1).register.asInt() != srcType.register
+					.asInt() + 1) {
+				throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+						"VFY: register2 v%u-%u values %d,%d", vsrc, vsrc + 1,
+						registerLine.regTypes.get(vsrc),
+						registerLine.regTypes.get(vsrc + 1)));
+			} else if (!CodeVerifyConstants.canConvertTo2(srcType, checkType)) {
+				throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+						"VFY: register2 v%u type %d, wanted %d", vsrc, srcType,
+						checkType));
+			}
+			/* Update type if source is from const */
+			if (srcType.register == kRegTypeConstLo) {
+				setRegisterType(registerLine, vsrc, checkType);
+			}
+			break;
+		case kRegTypeConstLo:
+		case kRegTypeConstHi:
+		case kRegTypeLongHi:
+		case kRegTypeDoubleHi:
+		case kRegTypeZero:
+		case kRegTypeOne:
+		case kRegTypeUnknown:
+		case kRegTypeConflict:
+			/* should never be checking for these explicitly */
+			throw new VerifyException(VERIFY_ERROR_GENERIC,
+					"VFY: kregTypeConflict should never be checked for.");
+		case kRegTypeUninit:
+		default:
+			/* make sure checkType is initialized reference */
+			if (!checkType.regTypeIsReference()) {
+				throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+						"VFY: unexpected check type %d", checkType));
+
+			}
+			if (checkType.regTypeIsUninitReference()) {
+				throw new VerifyException(VERIFY_ERROR_GENERIC,
+						"VFY: uninitialized ref not expected as reg check");
+			}
+			/* make sure srcType is initialized reference or always-NULL */
+			if (!srcType.regTypeIsReference()) {
+				throw new VerifyException(VERIFY_ERROR_GENERIC,
+						String.format("VFY: register1 v%u type %d, wanted ref",
+								vsrc, srcType));
+			}
+			if (srcType.regTypeIsUninitReference()) {
+				throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+						"VFY: register1 v%u holds uninitialized ref", vsrc));
+			}
+			/* if the register isn't Zero, make sure it's an instance of check */
+			if (srcType.register != kRegTypeZero) {
+				ObjectClass srcClass = (ObjectClass) srcType
+						.regTypeInitializedReferenceToClass();
+				ObjectClass checkClass = (ObjectClass) srcType
+						.regTypeInitializedReferenceToClass();
+				if (srcClass == null || checkClass == null)
+					throw new RuntimeException("src or check class is null");
+
+				if (checkClass.dvmIsInterfaceClass()) {
+					/*
+					 * All objects implement all interfaces as far as the
+					 * verifier is concerned. The runtime has to sort it out.
+					 * See comments above findCommonSuperclass.
+					 */
+					/*
+					 * if (srcClass != checkClass && !dvmImplements(srcClass,
+					 * checkClass)) { LOG_VFY("VFY: %s does not implement %s",
+					 * srcClass->descriptor, checkClass->descriptor);pFailure =
+					 * VERIFY_ERROR_GENERIC; }
+					 */
+				} else {
+					if (!Clazz.dvmInstanceof(srcClass, checkClass)) {
+						throw new VerifyException(VERIFY_ERROR_GENERIC,
+								String.format("VFY: %s is not instance of %s",
+										srcClass.getSignature(),
+										checkClass.getSignature()));
+					}
+				}
+			}
+			break;
+		}
+	}
+
+	public static final boolean DEBUG_VERBOSE_VERIFICATION = true;
+	public static final boolean DEBUG_VERBOSE = true;
+
+	/**
+	 * Grind through the instructions.
+	 * 
+	 * <p>
+	 * The basic strategy is as outlined in v3 4.11.1.2: set the "changed" bit
+	 * on the first instruction, process it (setting additional "changed" bits),
+	 * and repeat until there are no more.
+	 * 
+	 * <pre>
+	 * v3 4.11.1.1
+	 * - (N/A) operand stack is always the same size
+	 * - operand stack [registers] contain the correct types of values
+	 * - local variables [registers] contain the correct types of values
+	 * - methods are invoked with the appropriate arguments
+	 * - fields are assigned using values of appropriate types
+	 * - opcodes have the correct type values in operand registers
+	 * - there is never an uninitialized class instance in a local variable in
+	 *   code protected by an exception handler (operand stack is okay, because
+	 *   the operand stack is discarded when an exception is thrown) [can't
+	 *   know what's a local var w/o the debug info -- should fall out of
+	 *   register typing]
+	 * 
+	 * v3 4.11.1.2
+	 * - execution cannot fall off the end of the code
+	 * </pre>
+	 * 
+	 * <p>
+	 * (We also do many of the items described in the "static checks" sections,
+	 * because it's easier to do them here.)
+	 * 
+	 * <p>
+	 * We need an array of RegType values, one per register, for every
+	 * instruction. If the method uses monitor-enter, we need extra data for
+	 * every register, and a stack for every "interesting" instruction. In
+	 * theory this could become quite large -- up to several megabytes for a
+	 * monster function.
+	 * 
+	 * <p>
+	 * NOTE:
+	 * <p>
+	 * The spec forbids backward branches when there's an uninitialized
+	 * reference in a register. The idea is to prevent something like this:
+	 * 
+	 * <pre>
+	 *   loop:
+	 *     move r1, r0
+	 *     new-instance r0, MyClass
+	 *     ...
+	 *     if-eq rN, loop  // once
+	 *   initialize r0
+	 * </pre>
+	 * 
+	 * <p>
+	 * This leaves us with two different instances, both allocated by the same
+	 * instruction, but only one is initialized. The scheme outlined in v3
+	 * 4.11.1.4 wouldn't catch this, so they work around it by preventing
+	 * backward branches. We achieve identical results without restricting code
+	 * reordering by specifying that you can't execute the new-instance
+	 * instruction if a register contains an uninitialized instance created by
+	 * that same instrutcion.
+	 * 
+	 * @throws VerifyException
+	 */
+	static boolean doCodeVerification(VerifierData vdata, RegisterTable regTable)
+			throws VerifyException {
+
+		int insnsSize = vdata.insnsSize();
+		boolean result = false;
+		int insnIdx, startGuess;
+
+		InstructionList iList = vdata.method.instructionList();
+		/*
+		 * Begin by marking the first instruction as "changed".
+		 */
+		iList.dvmInsnSetChanged(0, true);
+
+		if (DEBUG_VERBOSE_VERIFICATION) { // if
+											// (dvmWantVerboseVerification(meth))
+											// {
+			String logString = String.format(
+					"Now verifying: %s.%s %s (ins=%d regs=%d)", vdata.method
+							.getDeclaringClass().getSignature(), vdata.method
+							.getMethodName(), vdata.method.getPrototype()
+							.toString(), vdata.method.getInsSize(),
+					vdata.method.getRegistersSize());
+			Log.i(LOG_TAG,
+					" ------ [0    4    8    12   16   20   24   28   32   36");
+		}
+
+		startGuess = 0;
+
+		/*
+		 * Continue until no instructions are marked "changed".
+		 */
+		while (true) {
+			/*
+			 * Find the first marked one. Use "startGuess" as a way to find one
+			 * quickly.
+			 */
+			for (insnIdx = startGuess; insnIdx < insnsSize; insnIdx++) {
+				if (iList.dvmInsnIsChanged(insnIdx))
+					break;
+			}
+
+			if (insnIdx == insnsSize) {
+				if (startGuess != 0) {
+					/* try again, starting from the top */
+					startGuess = 0;
+					continue;
+				} else {
+					/* all flags are clear */
+					break;
+				}
+			}
+
+			/*
+			 * We carry the working set of registers from instruction to
+			 * instruction. If this address can be the target of a branch (or
+			 * throw) instruction, or if we're skipping around chasing "changed"
+			 * flags, we need to load the set of registers from the table.
+			 * 
+			 * Because we always prefer to continue on to the next instruction,
+			 * we should never have a situation where we have a stray "changed"
+			 * flag set on an instruction that isn't a branch target.
+			 */
+			if (iList.dvmInsnIsBranchTarget(insnIdx)) {
+				try {
+					RegisterLine workLine = (RegisterLine) regTable.registerLines
+							.get(insnIdx).clone();
+				} catch (CloneNotSupportedException e) {
+					throw new RuntimeException(e);
+				}
+			} else {
+				/*
+				 * Sanity check: retrieve the stored register line (assuming a
+				 * full table) and make sure it actually matches.
+				 */
+				RegisterLine registerLine = regTable.registerLines.get(insnIdx);
+
+				if (regTable.registerLines.get(insnIdx).compareTo(
+						regTable.workLine) != 0) {
+					String logString = String.format(
+							"HUH? workLine diverged in %s.%s %s", vdata.method
+									.getDeclaringClass().getSignature(),
+							vdata.method.getMethodName(), vdata.method
+									.getPrototype().toString());
+
+					dumpRegTypes(vdata, registerLine, 0, "work",
+							vdata.uninitMap, DRT_SHOW_REF_TYPES
+									| DRT_SHOW_LOCALS);
+					dumpRegTypes(vdata, registerLine, 0, "insn",
+							vdata.uninitMap, DRT_SHOW_REF_TYPES
+									| DRT_SHOW_LOCALS);
+
+					throw new VerifyException(
+							VerifyErrorCause.VERIFY_ERROR_GENERIC, logString);
+
+				}
+			}
+			if (DEBUG_VERBOSE) {
+				dumpRegTypes(vdata, regTable.workLine, insnIdx, null,
+						vdata.uninitMap, SHOW_REG_DETAILS);
+				Log.i(LOG_TAG, String.format("process %s.%s %s %d",
+						vdata.method.getDeclaringClass().getSignature(),
+						vdata.method.getMethodName(), vdata.method.getShorty(),
+						insnIdx));
+			}
+
+			if (!verifyInstruction(vdata.method, iList.get(insnIdx), regTable,
+					insnIdx, vdata.uninitMap, startGuess))
+
+				throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+						"+++ %s bailing at %d", vdata.method.getMethodName(),
+						insnIdx));
+
+			/*
+			 * Clear "changed" and mark as visited.
+			 */
+			iList.dvmInsnSetVisited(insnIdx, true);
+			iList.dvmInsnSetChanged(insnIdx, false);
+		}
+
+		if (DEAD_CODE_SCAN && !vdata.method.IS_METHOD_FLAG_SET()) { // !IS_METHOD_FLAG_SET(meth,
+																	// METHOD_ISWRITABLE))
+																	// {
+			/*
+			 * Scan for dead code. There's nothing "evil" about dead code
+			 * (besides the wasted space), but it indicates a flaw somewhere
+			 * down the line, possibly in the verifier.
+			 * 
+			 * If we've substituted "always throw" instructions into the stream,
+			 * we are almost certainly going to have some dead code.
+			 */
+			int deadStart = -1;
+			for (int i = 0; i < iList.size(); i++) {
+				insnIdx = iList.keyAt(i);
+
+			}
+			for (int i = 0; i < iList.size(); i++) {
+				insnIdx = iList.keyAt(i);
+				DecodedInstruction instr = iList.valueAt(i);
+
+				/*
+				 * Switch-statement data doesn't get "visited" by scanner. It
+				 * may or may not be preceded by a padding NOP (for alignment).
+				 */
+
+				// this logic is crap.
+
+				if (instr.getOpcode() == kPackedSwitchSignature
+						|| instr.getOpcode() == kSparseSwitchSignature
+						|| instr.getOpcode() == kArrayDataSignature
+						|| (instr.getOpcode() == OP_NOP && (iList.get(
+								insnIdx + 1).getOpcode() == kPackedSwitchSignature
+								|| iList.get(insnIdx + 1).getOpcode() == kSparseSwitchSignature || iList
+								.get(insnIdx + 1).getOpcode() == kArrayDataSignature))) {
+					iList.dvmInsnSetVisited(insnIdx, true);
+				}
+
+				if (!iList.dvmInsnIsVisited(insnIdx)) {
+					if (deadStart < 0)
+						deadStart = insnIdx;
+				} else if (deadStart >= 0) {
+					Log.d(LOG_TAG, String.format(
+							"VFY: dead code 0x%04x-%04x in %s.%s %s",
+							deadStart, insnIdx - 1, vdata.method
+									.getDeclaringClass().getSignature(),
+							vdata.method.getMethodName(), vdata.method
+									.getPrototype().toString()));
+
+					deadStart = -1;
+				}
+			}
+			if (deadStart >= 0) {
+
+				Log.d(LOG_TAG, String.format(
+						"VFY: dead code 0x%04x-%04x in %s.%s %s", deadStart,
+						insnIdx - 1, vdata.method.getDeclaringClass()
+								.getSignature(), vdata.method.getMethodName(),
+						vdata.method.getPrototype().toString()));
+
+			}
+		}
+
+		result = true;
+
+		bail: return result;
+	}
+
+	public static final boolean VERIFIER_STATS = true;
+
+	private static Clazz aget_1nr_common(Method meth,
+			DecodedInstruction decInsn, RegisterLine workLine)
+			throws VerifyException {
+
+		Clazz resClass = null; // result
+		RegType tmpType = null;
+		RegType srcType = null;
+		RegType indexType = getRegisterType(workLine, decInsn.getC());
+		checkArrayIndexType(meth, indexType);
+
+		resClass = getClassFromRegister(workLine, decInsn.getB());
+
+		if (resClass != null) {
+			/* verify the class */
+			if (!resClass.dvmIsArrayClass()
+					|| ((ArrayClass) resClass).getarrayDim() != 1
+					|| !(((ArrayClass) resClass).elementClass() instanceof PrimitiveClass)) {
+				throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+						"VFY: invalid aget-1nr target %s",
+						resClass.getSignature()));
+			}
+
+			/* make sure array type matches instruction */
+			srcType = PrimitiveType
+					.primitiveTypeToRegType(((PrimitiveClass) ((ArrayClass) resClass)
+							.elementClass()).primitiveTypeEnum());
+
+			/* correct if float */
+			if (srcType.register == kRegTypeFloat
+					&& tmpType.register == kRegTypeInteger)
+				tmpType = new RegType(kRegTypeFloat);
+
+			if (!checkFieldArrayStore1nr(tmpType, srcType)) {
+				throw new VerifyException(
+						VERIFY_ERROR_GENERIC,
+						String.format(
+								"VFY: invalid aget-1nr, array type=%d with inst type=%d (on %s)",
+								srcType, tmpType, resClass.getSignature()));
+			}
+
+		}
+		setRegisterType(workLine, decInsn.getA(), tmpType);
+
+		return resClass;
+	}
+
+	/**
+	 * Perform verification for a single instruction.
+	 * 
+	 * <p>
+	 * This requires fully decoding the instruction to determine the effect it
+	 * has on registers.
+	 * 
+	 * <p>
+	 * Finds zero or more following instructions and sets the "changed" flag if
+	 * execution at that point needs to be (re-)evaluated. Register changes are
+	 * merged into "regTypes" at the target addresses. Does not set or clear any
+	 * other flags in "insnFlags".
+	 * 
+	 * <p>
+	 * This may alter meth.insns if we need to replace an instruction with
+	 * throw-verification-error.
+	 */
+	private static boolean verifyInstruction(Method meth,
+			DecodedInstruction instruction, RegisterTable regTable,
+			int insnIdx, UninitInstanceMap uninitMap, int pStartGuess) {
+		
+	    int insnsSize = meth.instructions().length; // dvmGetMethodInsnsSize(meth);
+	    InstructionList iList = meth.instructionList();
+	    DecodedInstruction decInsn = iList.get(insnIdx);
+	    boolean result = false;
+        Clazz fieldClass;
+        ObjectClass valueClass;
+	    Field staticField;
+        Field instField;
+        RegType valueType;
+	    RegType dstType;
+	    RegType indexType;
+        RegType objType;
+
+
+
+	    if (VERIFIER_STATS){
+	    if (iList.dvmInsnIsVisited(insnIdx)) {
+	        DvmGlobals.gDvm.verifierStats.instrsReexamined++;
+	    } else {
+	    	DvmGlobals.gDvm.verifierStats.instrsExamined++;
+	    }
+	    }
+
+	    /*
+	     * Once we finish decoding the instruction, we need to figure out where
+	     * we can go from here.  There are three possible ways to transfer
+	     * control to another statement:
+	     *
+	     * (1) Continue to the next instruction.  Applies to all but
+	     *     unconditional branches, method returns, and exception throws.
+	     * (2) Branch to one or more possible locations.  Applies to branches
+	     *     and switch statements.
+	     * (3) Exception handlers.  Applies to any instruction that can
+	     *     throw an exception that is handled by an encompassing "try"
+	     *     block.
+	     *
+	     * We can also return, in which case there is no successor instruction
+	     * from this point.
+	     *
+	     * The behavior can be determined from the OpcodeFlags.
+	     */
+
+	    RegisterLine workLine = regTable.workLine;
+	    Clazz resClass;
+	    int branchTarget = 0;
+	    int insnRegCount = meth.getRegistersSize(); 
+	    RegType tmpType;
+	    boolean justSetResult = false;
+
+
+
+	    int nextFlags = InstrUtils.dexGetFlagsFromOpcode(decInsn.getOpcodeEnum());
+
+	    /*
+	     * Make a copy of the previous register state.  If the instruction
+	     * can throw an exception, we will copy/merge this into the "catch"
+	     * address rather than workLine, because we don't want the result
+	     * from the "successful" code path (e.g. a check-cast that "improves"
+	     * a type) to be visible to the exception handler.
+	     */
+	    if ((nextFlags & kInstrCanThrow) != 0 && iList.dvmInsnIsInTry(insnIdx))
+	    {
+	    	regTable.savedLine = (RegisterLine)workLine.clone();
+
+	    } 
+	    
+	    // TODO: explain what NDEBUG sections so.
+
+	    switch (decInsn.getOpcode()) {
+	    case OP_NOP:
+	        /*
+	         * A "pure" NOP has no effect on anything.  Data tables start with
+	         * a signature that looks like a NOP; if we see one of these in
+	         * the course of executing code then we have a problem.
+	         */
+	        if (decInsn.getA() != 0) 
+	            throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: encountered data table in instruction stream");
+	        
+	        break;
+
+	    case OP_MOVE:
+	    case OP_MOVE_FROM16:
+	    case OP_MOVE_16:
+	        copyRegister1(workLine, decInsn.getA(), decInsn.getB(), kTypeCategory1nr);
+	        break;
+	    case OP_MOVE_WIDE:
+	    case OP_MOVE_WIDE_FROM16:
+	    case OP_MOVE_WIDE_16:
+	        copyRegister2(workLine, decInsn.getA(), decInsn.getB());
+	        break;
+	    case OP_MOVE_OBJECT:
+	    case OP_MOVE_OBJECT_FROM16:
+	    case OP_MOVE_OBJECT_16:
+	        copyRegister1(workLine, decInsn.getA(), decInsn.getB(), kTypeCategoryRef);
+	        break;
+
+	    /*
+	     * The move-result instructions copy data out of a "pseudo-register"
+	     * with the results from the last method invocation.  In practice we
+	     * might want to hold the result in an actual CPU register, so the
+	     * Dalvik spec requires that these only appear immediately after an
+	     * invoke or filled-new-array.
+	     *
+	     * These calls invalidate the "result" register.  (This is now
+	     * redundant with the reset done below, but it can make the debug info
+	     * easier to read in some cases.)
+	     */
+	    case OP_MOVE_RESULT:
+	        copyResultRegister1(workLine, insnRegCount, decInsn.getA(),
+	            kTypeCategory1nr);
+	        break;
+	    case OP_MOVE_RESULT_WIDE:
+	        copyResultRegister2(workLine, insnRegCount, decInsn.getA());
+	        break;
+	    case OP_MOVE_RESULT_OBJECT:
+	        copyResultRegister1(workLine, insnRegCount, decInsn.getA(),
+	            kTypeCategoryRef);
+	        break;
+
+	    case OP_MOVE_EXCEPTION:
+	        /*
+	         * This statement can only appear as the first instruction in an
+	         * exception handler (though not all exception handlers need to
+	         * have one of these).  We verify that as part of extracting the
+	         * exception type from the catch block list.
+	         *
+	         * "resClass" will hold the closest common superclass of all
+	         * exceptions that can be handled here.
+	         */
+	        resClass = getCaughtExceptionType(meth, insnIdx); // throws exception when something is wrong.
+	        setRegisterType(workLine, decInsn.getA(), regTypeFromClass(resClass));
+	        break;
+
+	    case OP_RETURN_VOID:
+	        if (!checkConstructorReturn(meth, workLine, insnRegCount)) {
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC);
+	        } else if (meth.getMethodReturnType().register != kRegTypeUnknown) {
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: return-void not expected");
+	        }
+	        break;
+	    case OP_RETURN:
+	        if (!checkConstructorReturn(meth, workLine, insnRegCount)) {
+	            throw new VerifyException(VERIFY_ERROR_GENERIC);
+	        } else {
+	            /* check the method signature */
+	            RegType returnType = meth.getMethodReturnType();
+	            try{
+	            	checkTypeCategory(returnType, kTypeCategory1nr);
+	            } catch (VerifyException ex){
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: return-1nr not expected", ex);
+	            }
+	            
+	            /*
+	             * javac generates synthetic functions that write byte values
+	             * into boolean fields. Also, it may use integer values for
+	             * boolean, byte, short, and character return types.
+	             */
+	            RegType srcType = getRegisterType(workLine, decInsn.getA());
+	            if ((returnType.register == kRegTypeBoolean && srcType.register == kRegTypeByte) ||
+	                ((returnType.register == kRegTypeBoolean || returnType.register == kRegTypeByte ||
+	                  returnType.register == kRegTypeShort || returnType.register == kRegTypeChar) &&
+	                 srcType.register == kRegTypeInteger))
+	                returnType = srcType;
+
+	            /* check the register contents */
+	            try{
+	            	verifyRegisterType(workLine, decInsn.getA(), returnType);
+	            } catch (VerifyException ex){
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: return-1nr on invalid register v%d",
+		                    decInsn.getA()), ex);
+	            }
+
+	        }
+	        break;
+	    case OP_RETURN_WIDE:
+	        if (!checkConstructorReturn(meth, workLine, insnRegCount)) {
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC);
+	        } else {
+	            RegType returnType;
+
+	            /* check the method signature */
+	            returnType = meth.getMethodReturnType();
+	            try{
+	            checkTypeCategory(returnType, kTypeCategory2); // throws exception
+	            } catch (VerifyException ex){
+	                throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: return-wide not expected", ex);
+	            }
+
+	            /* check the register contents */
+	            try{
+	            verifyRegisterType(workLine, decInsn.getA(), returnType);
+	            } catch (VerifyException ex){
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: return-wide on invalid register pair v%d",
+		                    decInsn.getA()), ex);
+	            }
+	        }
+	        break;
+	    case OP_RETURN_OBJECT:
+	        if (!checkConstructorReturn(meth, workLine, insnRegCount)) {
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC);
+	        } else {
+	            RegType returnType = meth.getMethodReturnType();
+	            try{
+	            checkTypeCategory(returnType, kTypeCategoryRef);
+	            } catch (VerifyException ex){
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: return-object not expected");
+	            }
+
+	            /* returnType is the *expected* return type, not register value */
+	            if (returnType.register == kRegTypeZero)
+	            	throw new RuntimeException("bad return type");
+	            if (returnType.regTypeIsUninitReference())
+	            	throw new RuntimeException("return type is an uninit reference");
+
+	            /*
+	             * Verify that the reference in vAA is an instance of the type
+	             * in "returnType".  The Zero type is allowed here.  If the
+	             * method is declared to return an interface, then any
+	             * initialized reference is acceptable.
+	             *
+	             * Note getClassFromRegister fails if the register holds an
+	             * uninitialized reference, so we do not allow them to be
+	             * returned.
+	             */
+	            ObjectClass declClass;
+
+	            declClass = (ObjectClass)returnType.regTypeInitializedReferenceToClass();
+	            resClass = (ObjectClass)getClassFromRegister(workLine, decInsn.getA());
+	            if (resClass != null) {
+	                if (!declClass.dvmIsInterfaceClass() &&
+	                    !Clazz.dvmInstanceof((ObjectClass)resClass, declClass))
+	                {
+	                	Log.i(LOG_TAG, String.format("VFY: returning %s, declared %s",
+	                            resClass.getSignature(),  declClass.getSignature()));
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: returning %s, declared %s",
+	                            resClass.getSignature(),  declClass.getSignature()));
+	                }
+	            }
+	        }
+	        break;
+
+	    case OP_CONST_4:
+	    case OP_CONST_16:
+	    case OP_CONST:
+	        /* could be boolean, int, float, or a null reference */
+	        setRegisterType(workLine, decInsn.getA(),
+	            RegType.determineCat1Const(decInsn.getB()));
+	        break;
+	    case OP_CONST_HIGH16:
+	        /* could be boolean, int, float, or a null reference */
+	        setRegisterType(workLine, decInsn.getA(),
+	            RegType.determineCat1Const(decInsn.getB() << 16));
+	        break;
+	    case OP_CONST_WIDE_16:
+	    case OP_CONST_WIDE_32:
+	    case OP_CONST_WIDE:
+	    case OP_CONST_WIDE_HIGH16:
+	        /* could be long or double; resolved upon use */
+	        setRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeConstLo));
+	        break;
+	    case OP_CONST_STRING:
+	    case OP_CONST_STRING_JUMBO:
+	        
+	        setRegisterType(workLine, decInsn.getA(),
+	            regTypeFromClass(meth.getModel().lookupClassByDescriptor(PredefinedClasses.SIG_JAVA_LANG_STRING)));
+	        break;
+	    case OP_CONST_CLASS:
+	    case OP_CONST_CLASS_JUMBO:
+	        
+	        /* make sure we can resolve the class; access check is important */
+	    	// FIXME use register B to get the class by index number.
+	        resClass = (ObjectClass)meth.getModel().lookupClassByTypeIndex(decInsn.getB()); // dvmOptResolveClass(meth.getDeclaringClass(), decInsn.getB());
+	        if (resClass == null) {
+	            throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: unable to resolve const-class %d (%s) in %s",
+	                decInsn.getB(), meth.getShorty(), meth.getDeclaringClass().getSignature()));
+	           
+	        } else {
+	            setRegisterType(workLine, decInsn.getA(),
+	                regTypeFromClass(meth.getModel().lookupClassByDescriptor(PredefinedClasses.SIG_JAVA_LANG_CLASS)));
+	        }
+	        break;
+
+	    case OP_MONITOR_ENTER:
+	        handleMonitorEnter(workLine, decInsn.getA(), insnIdx);
+	        break;
+	    case OP_MONITOR_EXIT:
+	        /*
+	         * monitor-exit instructions are odd.  They can throw exceptions,
+	         * but when they do they act as if they succeeded and the PC is
+	         * pointing to the following instruction.  (This behavior goes back
+	         * to the need to handle asynchronous exceptions, a now-deprecated
+	         * feature that Dalvik doesn't support.)
+	         *
+	         * In practice we don't need to worry about this.  The only
+	         * exceptions that can be thrown from monitor-exit are for a
+	         * null reference and -exit without a matching -enter.  If the
+	         * structured locking checks are working, the former would have
+	         * failed on the -enter instruction, and the latter is impossible.
+	         *
+	         * This is fortunate, because issue 3221411 prevents us from
+	         * chasing the "can throw" path when monitor verification is
+	         * enabled.  If we can fully verify the locking we can ignore
+	         * some catch blocks (which will show up as "dead" code when
+	         * we skip them here); if we can't, then the code path could be
+	         * "live" so we still need to check it.
+	         */
+	        // if (workLine->monitorEntries != NULL)
+	        nextFlags &= ~kInstrCanThrow;
+	        handleMonitorExit(workLine, decInsn.getA(), insnIdx);
+	        break;
+
+	    case OP_CHECK_CAST:
+	    case OP_CHECK_CAST_JUMBO:
+	        /*
+	         * If this instruction succeeds, we will promote register vA to
+	         * the type in vB.  (This could be a demotion -- not expected, so
+	         * we don't try to address it.)
+	         *
+	         * If it fails, an exception is thrown, which we deal with later
+	         * by ignoring the update to decInsn.vA when branching to a handler.
+	         */
+	        resClass = (ObjectClass)meth.getModel().lookupClassByTypeIndex(decInsn.getB()); // ;dvmOptResolveClass(meth->clazz, decInsn.vB, &failure);
+	        if (resClass == null) {
+	            throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: unable to resolve check-cast %d in %s",
+	                decInsn.getB(), meth.getDeclaringClass().getSignature()));
+	            
+	        } else {
+	            RegType origType;
+
+	            origType = getRegisterType(workLine, decInsn.getA());
+	            if (!origType.regTypeIsReference()) {
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: check-cast on non-reference in v%u",decInsn.getA()));
+	            }
+	            setRegisterType(workLine, decInsn.getA(), regTypeFromClass(resClass));
+	        }
+	        break;
+	    case OP_INSTANCE_OF:
+	    case OP_INSTANCE_OF_JUMBO:
+	        /* make sure we're checking a reference type */
+	        tmpType = getRegisterType(workLine, decInsn.getB());
+	        if (!tmpType.regTypeIsReference()) {
+	        	
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: vB not a reference (%d)", tmpType));
+
+	        }
+
+	        /* make sure we can resolve the class; access check is important */
+	        resClass = (ObjectClass)meth.getModel().lookupClassByTypeIndex(decInsn.getC()); //dvmOptResolveClass(meth->clazz, decInsn.vC, &failure);
+	        if (resClass == null) {
+	            
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: unable to resolve instanceof %d  in %s",
+	                decInsn.getC(), meth.getDeclaringClass().getSignature()));
+	        } else {
+	            /* result is boolean */
+	            setRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeBoolean));
+	        }
+	        break;
+
+	    case OP_ARRAY_LENGTH:
+	        resClass = getClassFromRegister(workLine, decInsn.getB());
+	        try{
+	        	ArrayClass ac = (ArrayClass)resClass;
+	        } catch (ClassCastException ex){
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: array-length on non-array");
+	        }
+	        setRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeInteger));
+	        break;
+
+	    case OP_NEW_INSTANCE:
+	    case OP_NEW_INSTANCE_JUMBO:
+	        resClass = meth.getModel().lookupClassByTypeIndex(decInsn.getB()); // dvmOptResolveClass(meth->clazz, decInsn.vB, &failure);
+	        if (resClass == null) {
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: unable to resolve new-instance %d (%s) in %s",
+	                decInsn.getB(), meth.getPrototype().getShorty(), meth.getDeclaringClass().getSignature()));
+	            
+	        } else {
+	            RegType uninitType;
+
+	            /* can't create an instance of an interface or abstract class */
+	            if (resClass.dvmIsAbstractClass() || resClass.dvmIsInterfaceClass()) {
+	            	throw new VerifyException(VERIFY_ERROR_INSTANTIATION, String.format(
+	                "VFY: new-instance on interface or abstract class %s",
+	                    resClass.getSignature()));
+	                break;
+	            }
+
+	            /* add resolved class to uninit map if not already there */
+	            uninitMap.put(insnIdx, resClass);
+	            int uidx = uninitMap.indexOfKey(insnIdx);
+	            uninitType = regTypeFromUninitIndex(uidx);
+
+	            /*
+	             * Any registers holding previous allocations from this address
+	             * that have not yet been initialized must be marked invalid.
+	             */
+	            markUninitRefsAsInvalid(workLine, insnRegCount, uninitMap,
+	                uninitType);
+
+	            /* add the new uninitialized reference to the register ste */
+	            setRegisterType(workLine, decInsn.getA(), uninitType);
+	        }
+	        break;
+	    case OP_NEW_ARRAY:
+	    case OP_NEW_ARRAY_JUMBO:
+	    		resClass = meth.getModel().lookupClassByTypeIndex(decInsn.getC()); // dvmOptResolveClass(meth->clazz, decInsn.vC, &failure);
+	        if (resClass == null) {
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: unable to resolve new-array %d (%s) in %s",
+	                decInsn.getC(), meth.getPrototype().getShorty(), meth.getDeclaringClass().getSignature()));
+	        
+	    	
+	        } else if (!resClass.dvmIsArrayClass()) {
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: new-array on non-array class");
+	        } else {
+	            /* make sure "size" register is valid type */
+	            verifyRegisterType(workLine, decInsn.getB(), new RegType(kRegTypeInteger));
+	            /* set register type to array class */
+	            setRegisterType(workLine, decInsn.getA(), regTypeFromClass(resClass));
+	        }
+	        break;
+	    case OP_FILLED_NEW_ARRAY:
+	    case OP_FILLED_NEW_ARRAY_RANGE:
+	    case OP_FILLED_NEW_ARRAY_JUMBO:
+	    	try{
+	    		resClass = meth.getModel().lookupClassByTypeIndex(decInsn.getB()); // dvmOptResolveClass(meth->clazz, decInsn.vB, &failure);
+	    		 if (resClass == null) {
+	 	        	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: unable to resolve filled-array %d (%s) in %s",
+	 	                decInsn.getB(), meth.getPrototype().getShorty(), meth.getDeclaringClass().getSignature()));
+	 	        } else {
+		            boolean isRange = (decInsn.getOpcode() == OP_FILLED_NEW_ARRAY_RANGE ||
+		                            decInsn.getOpcode()== OP_FILLED_NEW_ARRAY_JUMBO);
+
+		            /* check the arguments to the instruction */
+		            verifyFilledNewArrayRegs(meth, workLine, decInsn,
+		                (ArrayClass)resClass, isRange);
+		            /* filled-array result goes into "result" register */
+		            setResultRegisterType(workLine, insnRegCount,
+		                regTypeFromClass(resClass));
+		            justSetResult = true;
+		        }
+
+	 	      
+	    	} catch (ClassCastException ex){
+	    		throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: filled-new-array on non-array class");
+	    	}
+
+	        break;
+
+	    case OP_CMPL_FLOAT:
+	    case OP_CMPG_FLOAT:
+	        verifyRegisterType(workLine, decInsn.getB(), new RegType(kRegTypeFloat));
+	        verifyRegisterType(workLine, decInsn.getC(), new RegType(kRegTypeFloat));
+	        setRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeBoolean));
+	        break;
+	    case OP_CMPL_DOUBLE:
+	    case OP_CMPG_DOUBLE:
+	        verifyRegisterType(workLine, decInsn.getB(), new RegType(kRegTypeDoubleLo));
+	        verifyRegisterType(workLine, decInsn.getC(), new RegType(kRegTypeDoubleLo));
+	        setRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeBoolean));
+	        break;
+	    case OP_CMP_LONG:
+	        verifyRegisterType(workLine, decInsn.getB(), new RegType(kRegTypeLongLo));
+	        verifyRegisterType(workLine, decInsn.getC(), new RegType(kRegTypeLongLo));
+	        setRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeBoolean));
+	        break;
+
+	    case OP_THROW:
+	    	
+    		resClass = getClassFromRegister(workLine, decInsn.getA());
+    		if (!Clazz.dvmInstanceof((ObjectClass)resClass, (ObjectClass)meth.getModel().lookupClassByDescriptor(PredefinedClasses.SIG_JAVA_LANG_THROWABLE))){
+    			throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: thrown class %s not instanceof Throwable",
+	                        resClass.getSignature()));
+	        }
+	        break;
+
+	    case OP_GOTO:
+	    case OP_GOTO_16:
+	    case OP_GOTO_32:
+	        /* no effect on or use of registers */
+	        break;
+
+	    case OP_PACKED_SWITCH:
+	    case OP_SPARSE_SWITCH:
+	        /* verify that vAA is an integer, or can be converted to one */
+	        verifyRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeInteger));
+	        break;
+
+	    case OP_FILL_ARRAY_DATA:
+	        {
+	            int[] arrayData = new int[10];
+	            short elemWidth;
+
+	            /* Similar to the verification done for APUT */
+	            resClass = getClassFromRegister(workLine, decInsn.getA());
+	            
+	            /* resClass can be null if the reg type is Zero */
+	            if (resClass == null)
+	                break;
+	            ArrayClass arrayResClass;
+	            try{
+	            	arrayResClass = (ArrayClass)resClass;
+	            } catch (ClassCastException ex){
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: invalid fill-array-data on %s",
+	                        resClass.getSignature()));
+	            }
+	            if (!resClass.dvmIsArrayClass() || arrayResClass.getarrayDim() != 1 ||
+	                !(arrayResClass.elementClass() instanceof PrimitiveClass) ||
+	                (arrayResClass.elementClass().getSignature().equals(SIG_VOID)))
+	            {
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: invalid fill-array-data on %s",
+	                        resClass.getSignature()));
+	                break;
+	            }
+
+	            PrimitiveType pType = ((PrimitiveClass)arrayResClass.elementClass()).primitiveTypeEnum();
+	            valueType = PrimitiveType.primitiveTypeToRegType(
+	            		pType);
+
+	            /*
+	             * Now verify if the element width in the table matches the element
+	             * width declared in the array
+	             */
+	            short[] insns = meth.instructions();
+	            arrayData[0] = insns[insnIdx] + (insns[insnIdx+1] | ((insns[insnIdx+2]) << 16));
+	            if (arrayData[0] != kArrayDataSignature) {
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: invalid magic for array-data");
+	                break;
+	            }
+
+	            switch (pType) {
+	                case PRIM_BOOLEAN:
+	                case PRIM_BYTE:
+	                     elemWidth = 1;
+	                     break;
+	                case PRIM_CHAR:
+	                case PRIM_SHORT:
+	                     elemWidth = 2;
+	                     break;
+	                case PRIM_FLOAT:
+	                case PRIM_INT:
+	                     elemWidth = 4;
+	                     break;
+	                case PRIM_DOUBLE:
+	                case PRIM_LONG:
+	                     elemWidth = 8;
+	                     break;
+	                default:
+	                     elemWidth = 0;
+	                     break;
+	            }
+
+	            /*
+	             * Since we don't compress the data in Dex, expect to see equal
+	             * width of data stored in the table and expected from the array
+	             * class.
+	             */
+	            if (arrayData[1] != elemWidth) {
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: array-data size mismatch (%d vs %d)",
+	                        arrayData[1], elemWidth));
+	            }
+	        }
+	        break;
+
+	    case OP_IF_EQ:
+	    case OP_IF_NE:
+	        {
+	            RegType type1, type2;
+
+	            type1 = getRegisterType(workLine, decInsn.getA());
+	            type2 = getRegisterType(workLine, decInsn.getB());
+
+	            /* both references? */
+	            if (type1.regTypeIsReference() && type2.regTypeIsReference())
+	                break;
+
+	            /* both category-1nr? */
+	            checkTypeCategory(type1, kTypeCategory1nr);
+	            checkTypeCategory(type2, kTypeCategory1nr);
+	            if (type1.register == kRegTypeFloat || type2.register == kRegTypeFloat) {
+	              throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: args to if-eq/if-ne must both be refs or cat1");
+	            }
+	        }
+	        break;
+	    case OP_IF_LT:
+	    case OP_IF_GE:
+	    case OP_IF_GT:
+	    case OP_IF_LE:
+	        tmpType = getRegisterType(workLine, decInsn.getA());
+	        checkTypeCategory(tmpType, kTypeCategory1nr);
+	        if (tmpType.register == kRegTypeFloat) {
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: args to 'if' must be cat-1nr and not float");
+	        }
+	        tmpType = getRegisterType(workLine, decInsn.getB());
+	        checkTypeCategory(tmpType, kTypeCategory1nr);
+	        if (tmpType.register == kRegTypeFloat) {
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: args to 'if' must be cat-1nr and not float");
+	        }
+
+	        break;
+	    case OP_IF_EQZ:
+	    case OP_IF_NEZ:
+	        tmpType = getRegisterType(workLine, decInsn.getA());
+	        if (tmpType.regTypeIsReference())
+	            break;
+	        checkTypeCategory(tmpType, kTypeCategory1nr);
+	        if (tmpType.register == kRegTypeFloat) {
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: expected non-float cat-1 arg to if");
+	        }
+	        break;
+	    case OP_IF_LTZ:
+	    case OP_IF_GEZ:
+	    case OP_IF_GTZ:
+	    case OP_IF_LEZ:
+	        tmpType = getRegisterType(workLine, decInsn.getA());
+	        checkTypeCategory(tmpType, kTypeCategory1nr);
+	        if (tmpType.register == kRegTypeFloat) {
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: expected non-float cat-1 arg to if");
+	        }
+	      
+	        break;
+
+	    case OP_AGET:
+	        tmpType.register = kRegTypeInteger;
+	        resClass =  aget_1nr_common(meth, decInsn, workLine);
+	    case OP_AGET_BOOLEAN:
+	        tmpType = new RegType(kRegTypeBoolean);
+	        aget_1nr_common(meth, decInsn, workLine);
+	        break;
+	    case OP_AGET_BYTE:
+	        tmpType = new RegType(kRegTypeByte);
+	        aget_1nr_common(meth, decInsn, workLine);
+	        break;
+	    case OP_AGET_CHAR:
+	        tmpType = new RegType(kRegTypeChar);
+	        aget_1nr_common(meth, decInsn, workLine);
+	        break;
+	    case OP_AGET_SHORT:
+	        tmpType = new RegType(kRegTypeShort);
+	        aget_1nr_common(meth, decInsn, workLine);
+	
+	        break;
+
+	    case OP_AGET_WIDE:
+	        {
+	            
+
+	            indexType = getRegisterType(workLine, decInsn.getC());
+	            checkArrayIndexType(meth, indexType);
+
+	            resClass = getClassFromRegister(workLine, decInsn.getB());
+	            if (resClass != null) {
+	                /* verify the class */
+	                if (!resClass.dvmIsArrayClass() || ((ArrayClass)resClass).getarrayDim() != 1 ||
+	                        !(((ArrayClass)resClass).elementClass() instanceof PrimitiveClass))
+	                {
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: invalid aget-wide target %s",
+	                        resClass.getSignature()));
+	                }
+	                ArrayClass arrayResClass = (ArrayClass)resClass;
+	                PrimitiveClass pClass = (PrimitiveClass)arrayResClass.elementClass();
+	                /* try to refine "dstType" */
+	                switch (pClass.primitiveTypeEnum()) {
+	                case PRIM_LONG:
+	                    dstType = new RegType(kRegTypeLongLo);
+	                    break;
+	                case PRIM_DOUBLE:
+	                    dstType = new RegType(kRegTypeDoubleLo);
+	                    break;
+	                default:
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: invalid aget-wide on %s",
+		                        resClass.getSignature()));
+	                    dstType = new  RegType(kRegTypeUnknown);
+	                    break;
+	                }
+	            } else {
+	                /*
+	                 * Null array ref; this code path will fail at runtime.  We
+	                 * know this is either long or double, so label it const.
+	                 */
+	                dstType = new  RegType(kRegTypeConstLo);
+	            }
+	            setRegisterType(workLine, decInsn.getA(), dstType);
+	        }
+	        break;
+
+	    case OP_AGET_OBJECT:
+	        {
+	            indexType = getRegisterType(workLine, decInsn.getC());
+	            checkArrayIndexType(meth, indexType);
+
+
+	            /* get the class of the array we're pulling an object from */
+	            resClass = getClassFromRegister(workLine, decInsn.getB());
+
+	            if (resClass != null) {
+	                ObjectClass elementClass;
+
+	                if (!resClass.dvmIsArrayClass()) {
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: aget-object on non-array class");
+	                    break;
+	                }
+	                if (((ArrayClass)resClass).elementClass() == null)
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: element class is null");
+
+	                /*
+	                 * Find the element class.  resClass->elementClass indicates
+	                 * the basic type, which won't be what we want for a
+	                 * multi-dimensional array.
+	                 */
+	                if (resClass.getSignature().charAt(0) == '[') {
+	                	if (((ArrayClass)resClass).getarrayDim() <= 1)
+	                		throw new RuntimeException("Array dimensions too small");
+	                	String sig = resClass.getSignature().substring(1);
+	                    elementClass = (ObjectClass)meth.getModel().lookupClassByDescriptor(sig);
+	                    // dvmFindArrayClass(&resClass->descriptor[1],
+	                    //                    resClass->classLoader);
+	                } else if (resClass.getSignature().charAt(1) == 'L') {
+	                	if (((ArrayClass)resClass).getarrayDim() != 1)
+	                		throw new RuntimeException("Array dimensions must be 1 for this type.");
+	                	elementClass = (ObjectClass)((ArrayClass)resClass).elementClass();
+	                } else {
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: aget-object on non-ref array class (%s)",
+	                        resClass.getSignature()));
+	                    break;
+	                }
+
+	                dstType = regTypeFromClass(elementClass);
+	            } else {
+	                /*
+	                 * The array reference is NULL, so the current code path will
+	                 * throw an exception.  For proper merging with later code
+	                 * paths, and correct handling of "if-eqz" tests on the
+	                 * result of the array get, we want to treat this as a null
+	                 * reference.
+	                 */
+	                dstType = new RegType(kRegTypeZero);
+	            }
+	            setRegisterType(workLine, decInsn.getA(), dstType);
+	        }
+	        break;
+	    case OP_APUT:
+	        tmpType = new RegType(kRegTypeInteger);
+	        aput_1nr_common(meth, tmpType, workLine, decInsn);
+	    case OP_APUT_BOOLEAN:
+	        tmpType = new RegType(kRegTypeBoolean);
+	        aput_1nr_common(meth, tmpType, workLine, decInsn);
+	    case OP_APUT_BYTE:
+	        tmpType = new RegType(kRegTypeByte);
+	        aput_1nr_common(meth, tmpType, workLine, decInsn);
+	    case OP_APUT_CHAR:
+	        tmpType = new RegType(kRegTypeChar);
+	        aput_1nr_common(meth, tmpType, workLine, decInsn);
+	    case OP_APUT_SHORT:
+	        tmpType = new RegType(kRegTypeShort);
+	        aput_1nr_common(meth, tmpType, workLine, decInsn);
+	        break;
+	    case OP_APUT_WIDE:
+	        tmpType = getRegisterType(workLine, decInsn.getC());
+	        checkArrayIndexType(meth, tmpType);
+	        
+	        // TODO: check to be sure that we shouldn't catch the exception and then break.
+	        //if (!VERIFY_OK(failure))
+	        //    break;
+
+	        resClass = getClassFromRegister(workLine, decInsn.getB());
+
+	        if (resClass != null) {
+	            /* verify the class and try to refine "dstType" */
+	            if (!resClass.dvmIsArrayClass() || ((ArrayClass)resClass).getarrayDim() != 1 ||
+                        !(((ArrayClass)resClass).elementClass() instanceof PrimitiveClass))
+	            {
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: invalid aput-wide on %s",
+	                        resClass.getSignature()));
+	                break;
+	            }
+
+	            ArrayClass arrResClass = (ArrayClass)resClass;
+	            PrimitiveType pType = ((PrimitiveClass)arrResClass.elementClass()).primitiveTypeEnum();
+	            switch (pType) {
+	            case PRIM_LONG:
+	                verifyRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeLongLo));
+	                break;
+	            case PRIM_DOUBLE:
+	                verifyRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeDoubleLo));
+	                break;
+	            default:
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: invalid aput-wide on %s",
+	                        resClass.getSignature()));
+	                
+	                break;
+	            }
+	        }
+	        break;
+	    case OP_APUT_OBJECT:
+	        tmpType = getRegisterType(workLine, decInsn.getC());
+	        checkArrayIndexType(meth, tmpType);
+
+	        /* get the ref we're storing; Zero is okay, Uninit is not */
+	        resClass = getClassFromRegister(workLine, decInsn.getA());
+
+	        if (resClass != null) {
+	            ArrayClass arrayClass;
+	            ObjectClass elementClass;
+
+	            /*
+	             * Get the array class.  If the array ref is null, we won't
+	             * have type information (and we'll crash at runtime with a
+	             * null pointer exception).
+	             */
+	            arrayClass = (ArrayClass)getClassFromRegister(workLine, decInsn.getB());
+
+	            if (arrayClass != null) {
+	                /* see if the array holds a compatible type */
+	                if (!arrayClass.dvmIsArrayClass()) {
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: invalid aput-object on %s",
+	                            arrayClass.getSignature()));
+	                    break;
+	                }
+
+	                /*
+	                 * Find the element class.  resClass->elementClass indicates
+	                 * the basic type, which won't be what we want for a
+	                 * multi-dimensional array.
+	                 *
+	                 * All we want to check here is that the element type is a
+	                 * reference class.  We *don't* check instanceof here, because
+	                 * you can still put a String into a String[] after the latter
+	                 * has been cast to an Object[].
+	                 */
+	                if (arrayClass.getSignature().charAt(1) == '[') {
+	                	if (arrayClass.getarrayDim() <= 1)
+	                		throw new RuntimeException("array dimensions must be greater than 1");
+	                	String sig = arrayClass.getSignature().substring(1);
+	                	elementClass = (ObjectClass)meth.getModel().lookupClassByDescriptor(sig);
+	                	
+	                } else {
+	                	if(arrayClass.getarrayDim() != 1)
+	                		throw new RuntimeException("array dimensions must be 1 for this type");
+	                    elementClass = (ObjectClass)arrayClass.elementClass();
+	                }
+	                
+	                if (elementClass instanceof PrimitiveClass){ // elementClass->primitiveType != PRIM_NOT) {
+	                    throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: invalid aput-object of %s into %s",
+	                            resClass.getSignature(), arrayClass.getSignature()));
+	                }
+	            }
+	        }
+	        break;
+
+	    case OP_IGET:
+	    case OP_IGET_JUMBO:
+	        tmpType = new RegType(kRegTypeInteger);
+	        iget_1nr_common(meth, uninitMap, workLine, decInsn);
+	        break;
+	    case OP_IGET_BOOLEAN:
+	    case OP_IGET_BOOLEAN_JUMBO:
+	        tmpType = new RegType(kRegTypeBoolean);
+	        iget_1nr_common(meth, uninitMap, workLine, decInsn);
+	        break;
+	    case OP_IGET_BYTE:
+	    case OP_IGET_BYTE_JUMBO:
+	        tmpType = new RegType(kRegTypeByte);
+	        iget_1nr_common(meth, uninitMap, workLine, decInsn);
+	        break;
+	    case OP_IGET_CHAR:
+	    case OP_IGET_CHAR_JUMBO:
+	        tmpType = new RegType(kRegTypeChar);
+	        iget_1nr_common(meth, uninitMap, workLine, decInsn);
+	        break;
+	    case OP_IGET_SHORT:
+	    case OP_IGET_SHORT_JUMBO:
+	        tmpType = new RegType(kRegTypeShort);
+	        iget_1nr_common(meth, uninitMap, workLine, decInsn);
+	        break;
+	    case OP_IGET_WIDE:
+	    case OP_IGET_WIDE_JUMBO:
+	        {
+
+	            objType = getRegisterType(workLine, decInsn.getB());
+	            instField = getInstField(meth, uninitMap, objType, decInsn.getC());
+
+	            /* check the type, which should be prim */
+	            switch (instField.getType().charAt(0)) {
+	            case 'D':
+	                dstType = new RegType(kRegTypeDoubleLo);
+	                break;
+	            case 'J':
+	                dstType = new RegType(kRegTypeLongLo);
+	                break;
+	            default:
+	                dstType = new RegType(kRegTypeUnknown);
+
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: invalid iget-wide of %s.%s",
+	                        instField.getDefiningClass().getSignature(),
+	                        instField.getName()));
+
+	                break;
+	            }
+	            // if (VERIFY_OK(failure)) {
+	            setRegisterType(workLine, decInsn.getA(), dstType);
+	            // }
+	        }
+	        break;
+	    case OP_IGET_OBJECT:
+	    case OP_IGET_OBJECT_JUMBO:
+	        {
+
+
+	            objType = getRegisterType(workLine, decInsn.getB());
+	            instField = getInstField(meth, uninitMap, objType, decInsn.getC());
+
+	            fieldClass = instField.getFieldClass(); // getFieldClass(meth, instField);
+	            if (fieldClass == null) {
+	                /* class not found or primitive type */
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: unable to recover field class from '%s'",
+	                    instField.getType()));
+	            }
+	            if (fieldClass instanceof PrimitiveClass)
+	            	throw new RuntimeException("field class cannot be a primitive class.");
+	            
+                setRegisterType(workLine, decInsn.getA(),
+                    regTypeFromClass(fieldClass));
+	        }
+	        break;
+	    case OP_IPUT:
+	    case OP_IPUT_JUMBO:
+	        tmpType = new RegType(kRegTypeInteger);
+	        iput_1nr_common(workLine, decInsn, tmpType);
+	        break;
+	    case OP_IPUT_BOOLEAN:
+	    case OP_IPUT_BOOLEAN_JUMBO:
+	        tmpType = new RegType(kRegTypeBoolean);
+	        iput_1nr_common(workLine, decInsn, tmpType);
+	        break;
+	    case OP_IPUT_BYTE:
+	    case OP_IPUT_BYTE_JUMBO:
+	        tmpType = new RegType(kRegTypeByte);
+	        iput_1nr_common(workLine, decInsn, tmpType);
+	        break;
+	    case OP_IPUT_CHAR:
+	    case OP_IPUT_CHAR_JUMBO:
+	        tmpType = new RegType(kRegTypeChar);
+	        iput_1nr_common(workLine, decInsn, tmpType);
+	        break;
+	    case OP_IPUT_SHORT:
+	    case OP_IPUT_SHORT_JUMBO:
+	        tmpType = new RegType(kRegTypeShort);
+	        iput_1nr_common(workLine, decInsn, tmpType);
+	        break;
+	
+	        break;
+	    case OP_IPUT_WIDE:
+	    case OP_IPUT_WIDE_JUMBO:
+	        tmpType = getRegisterType(workLine, decInsn.getA());
+	        {
+	            RegType typeHi = getRegisterType(workLine, decInsn.getA() + 1);
+	            checkTypeCategory(tmpType, kTypeCategory2);
+	            checkWidePair(tmpType, typeHi);
+	        }
+
+
+	        objType = getRegisterType(workLine, decInsn.getB());
+	        instField = getInstField(meth, uninitMap, objType, decInsn.getC());
+
+	     // TODO uncomment   checkFinalFieldAccess(meth, instField);
+
+
+	        /* check the type, which should be prim */
+	        switch (instField.getType().charAt(0)) {
+	        case 'D':
+	            verifyRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeDoubleLo));
+	            break;
+	        case 'J':
+	            verifyRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeLongLo));
+	            break;
+	        default:
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: invalid iput-wide of %s.%s",
+	                    instField.getDefiningClass().getSignature(),
+	                    instField.getName()));
+
+
+	        }
+	        break;
+	    case OP_IPUT_OBJECT:
+	    case OP_IPUT_OBJECT_JUMBO:
+	        {
+
+	            objType = getRegisterType(workLine, decInsn.getB());
+	            instField = getInstField(meth, uninitMap, objType, decInsn.getC());
+	         // TODO uncomment   checkFinalFieldAccess(meth, instField);
+
+
+	            fieldClass = (ObjectClass)instField.getFieldClass();
+	            if (fieldClass == null) {
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: unable to recover field class from '%s'",
+	                    instField.getType()));
+	                break;
+	            }
+
+	            valueType = getRegisterType(workLine, decInsn.getA());
+	            if (!valueType.regTypeIsReference()) {
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: storing non-ref v%d into ref field '%s' (%s)",
+	                        decInsn.getA(), instField.getName(),
+	                        fieldClass.getSignature()));
+	                break;
+	            }
+	            if (valueType.register != kRegTypeZero) {
+	                valueClass = (ObjectClass)valueType.regTypeInitializedReferenceToClass();
+	                if (valueClass == null) {
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: storing uninit ref v%d into ref field",
+	                        decInsn.getA()));
+	                    break;
+	                }
+	                /* allow if field is any interface or field is base class */
+	                if (!fieldClass.dvmIsInterfaceClass() &&
+	                    !Clazz.dvmInstanceof(valueClass, (ObjectClass)fieldClass))
+	                {
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: storing type '%s' into field type '%s' (%s.%s)",
+	                            valueClass.getSignature(), fieldClass.getSignature(),
+	                            instField.getDefiningClass().getSignature(),
+	                            instField.getName()));
+	                }
+	            }
+	        }
+	        break;
+
+	    case OP_SGET:
+	    case OP_SGET_JUMBO:
+	        tmpType = new RegType(kRegTypeInteger);
+	        sget_1nr_common(meth, decInsn);
+	        break;
+	    case OP_SGET_BOOLEAN:
+	    case OP_SGET_BOOLEAN_JUMBO:
+	        tmpType = new RegType(kRegTypeBoolean);
+	        sget_1nr_common(meth, decInsn);
+	        break;
+	    case OP_SGET_BYTE:
+	    case OP_SGET_BYTE_JUMBO:
+	        tmpType = new RegType(kRegTypeByte);
+	        sget_1nr_common(meth, decInsn);
+	        break;
+	    case OP_SGET_CHAR:
+	    case OP_SGET_CHAR_JUMBO:
+	        tmpType = new RegType(kRegTypeChar);
+	        sget_1nr_common(meth, decInsn);
+	        break;
+	    case OP_SGET_SHORT:
+	    case OP_SGET_SHORT_JUMBO:
+	        tmpType = new RegType(kRegTypeShort);
+	        sget_1nr_common(meth, decInsn);
+	        break;
+	    case OP_SGET_WIDE:
+	    case OP_SGET_WIDE_JUMBO:
+	        {
+
+	            
+	            
+	            ObjectClass methClass = (ObjectClass)meth.getDeclaringClass();
+
+	            staticField = methClass.findStaticFieldByFieldIndex(decInsn.getB());
+
+	            /* check the type, which should be prim */
+	            switch (staticField.getType().charAt(0)) {
+	            case 'D':
+	                dstType.register = kRegTypeDoubleLo;
+	                break;
+	            case 'J':
+	                dstType.register = kRegTypeLongLo;
+	                break;
+	            default:
+	                dstType.register = kRegTypeUnknown;
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: invalid sget-wide of %s.%s",
+	                        staticField.getDefiningClass().getSignature(),
+	                        staticField.getName()));
+	                break;
+	            }
+	                setRegisterType(workLine, decInsn.getA(), dstType);
+	        }
+	        break;
+	    case OP_SGET_OBJECT:
+	    case OP_SGET_OBJECT_JUMBO:
+	        {
+
+
+	            ObjectClass methClass = (ObjectClass)meth.getDeclaringClass();
+	            staticField = methClass.findStaticFieldByFieldIndex(decInsn.getB());
+	            fieldClass = (ObjectClass)staticField.getDefiningClass();
+	            if (fieldClass == null) {
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: unable to recover field class from '%s'",
+	                    staticField.getType()));
+	                break;
+	            }
+	            if (fieldClass instanceof PrimitiveClass) {
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: attempt to get prim field with sget-object"));
+	                break;
+	            }
+	            setRegisterType(workLine, decInsn.getA(), regTypeFromClass(fieldClass));
+	        }
+	        break;
+	    case OP_SPUT:
+	    case OP_SPUT_JUMBO:
+	        tmpType = new RegType(kRegTypeInteger);
+	        sput_1nr_common(meth, workLine, decInsn, tmpType);
+	        break;
+	    case OP_SPUT_BOOLEAN:
+	    case OP_SPUT_BOOLEAN_JUMBO:
+	        tmpType = new RegType(kRegTypeBoolean);
+	        sput_1nr_common(meth, workLine, decInsn, tmpType);
+	        break;
+	    case OP_SPUT_BYTE:
+	    case OP_SPUT_BYTE_JUMBO:
+	        tmpType = new RegType(kRegTypeByte);
+	        sput_1nr_common(meth, workLine, decInsn, tmpType);
+	        break;
+	    case OP_SPUT_CHAR:
+	    case OP_SPUT_CHAR_JUMBO:
+	        tmpType = new RegType(kRegTypeChar);
+	        sput_1nr_common(meth, workLine, decInsn, tmpType);
+	        break;
+	    case OP_SPUT_SHORT:
+	    case OP_SPUT_SHORT_JUMBO:
+	        tmpType = new RegType(kRegTypeShort);
+	        sput_1nr_common(meth, workLine, decInsn, tmpType);
+	        break;
+	    case OP_SPUT_WIDE:
+	    case OP_SPUT_WIDE_JUMBO:
+	        tmpType = getRegisterType(workLine, decInsn.getA());
+	        {
+	            RegType typeHi = getRegisterType(workLine, decInsn.getA() + 1);
+	            checkTypeCategory(tmpType, kTypeCategory2);
+	            checkWidePair(tmpType, typeHi);
+	        }
+
+
+	        
+	        ObjectClass methClass = (ObjectClass)meth.getDeclaringClass();
+	        staticField = methClass.findStaticFieldByFieldIndex(decInsn.getB());
+
+	     // TODO uncomment   checkFinalFieldAccess(meth, staticField);
+
+	        /* check the type, which should be prim */
+	        switch (staticField.getDefiningClass().getSignature().charAt(0)) {
+	        case 'D':
+	            verifyRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeDoubleLo));
+	            break;
+	        case 'J':
+	            verifyRegisterType(workLine, decInsn.getA(), new RegType(kRegTypeLongLo));
+	            break;
+	        default:
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: invalid sput-wide of %s.%s",
+	                    staticField.getDefiningClass().getSignature(),
+	                    staticField.getName()));
+
+	            break;
+	        }
+	        break;
+	    case OP_SPUT_OBJECT:
+	    case OP_SPUT_OBJECT_JUMBO:
+	        {
+
+	            methClass = (ObjectClass)meth.getDeclaringClass();
+	            staticField = methClass.findStaticFieldByFieldIndex(decInsn.getB());
+
+	         // TODO uncomment   checkFinalFieldAccess(meth, staticField);
+
+
+	            fieldClass = (ObjectClass)staticField.getDefiningClass();
+	            if (fieldClass == null) {
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: unable to recover field class from '%s'",
+	                    staticField.getType()));
+	            }
+
+	            valueType = getRegisterType(workLine, decInsn.getA());
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: storing non-ref v%d into ref field '%s' (%s)",
+	                        decInsn.getA(), staticField.getName(),
+	                        fieldClass.getSignature()));
+	            	if (!valueType.regTypeIsReference()) {
+
+	            }
+	            if (valueType.register != kRegTypeZero) {
+	                valueClass = (ObjectClass)valueType.regTypeInitializedReferenceToClass();
+	                if (valueClass == null) {
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: storing uninit ref v%d into ref field",
+	                        decInsn.getA()));
+
+	                }
+	                /* allow if field is any interface or field is base class */
+	                if (!fieldClass.dvmIsInterfaceClass() &&
+	                    !ObjectClass.dvmInstanceof(valueClass, (ObjectClass)fieldClass))
+	                {
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: storing type '%s' into field type '%s' (%s.%s)",
+	                            valueClass.getSignature(), fieldClass.getSignature(),
+	                            staticField.getDefiningClass().getSignature(),
+	                            staticField.getName()));
+
+	                }
+	            }
+	        }
+	        break;
+
+	    case OP_INVOKE_VIRTUAL:
+	    case OP_INVOKE_VIRTUAL_RANGE:
+	    case OP_INVOKE_VIRTUAL_JUMBO:
+	    case OP_INVOKE_SUPER:
+	    case OP_INVOKE_SUPER_RANGE:
+	    case OP_INVOKE_SUPER_JUMBO:
+	        {
+	            Method calledMethod;
+	            RegType returnType;
+	            boolean isRange;
+	            boolean isSuper;
+
+	            isRange =  (decInsn.getOpcode() == OP_INVOKE_VIRTUAL_RANGE ||
+	                        decInsn.getOpcode() == OP_INVOKE_VIRTUAL_JUMBO ||
+	                        decInsn.getOpcode() == OP_INVOKE_SUPER_RANGE ||
+	                        decInsn.getOpcode() == OP_INVOKE_SUPER_JUMBO);
+	            isSuper =  (decInsn.getOpcode() == OP_INVOKE_SUPER ||
+	                        decInsn.getOpcode() == OP_INVOKE_SUPER_RANGE ||
+	                        decInsn.getOpcode() == OP_INVOKE_SUPER_JUMBO);
+
+	            calledMethod = verifyInvocationArgs(meth, workLine, insnRegCount,
+	                            decInsn, uninitMap, METHOD_VIRTUAL, isRange,
+	                            isSuper);
+
+	                break;
+	            returnType = calledMethod.getMethodReturnType();
+	            setResultRegisterType(workLine, insnRegCount, returnType);
+	            justSetResult = true;
+	        }
+	        break;
+	    case OP_INVOKE_DIRECT:
+	    case OP_INVOKE_DIRECT_RANGE:
+	    case OP_INVOKE_DIRECT_JUMBO:
+	        {
+	            RegType returnType;
+	            Method calledMethod;
+	            boolean isRange;
+
+	            isRange =  (decInsn.getOpcode() == OP_INVOKE_DIRECT_RANGE ||
+	                        decInsn.getOpcode() == OP_INVOKE_DIRECT_JUMBO);
+	            calledMethod = verifyInvocationArgs(meth, workLine, insnRegCount,
+	                            decInsn, uninitMap, METHOD_DIRECT, isRange,
+	                            false);
+
+
+	            /*
+	             * Some additional checks when calling <init>.  We know from
+	             * the invocation arg check that the "this" argument is an
+	             * instance of calledMethod->clazz.  Now we further restrict
+	             * that to require that calledMethod->clazz is the same as
+	             * this->clazz or this->super, allowing the latter only if
+	             * the "this" argument is the same as the "this" argument to
+	             * this method (which implies that we're in <init> ourselves).
+	             */
+	            if (calledMethod.isInitMethod()) {
+	                RegType thisType;
+	                thisType = getInvocationThis(workLine, decInsn);
+
+
+	                /* no null refs allowed (?) */
+	                if (thisType.register == kRegTypeZero) {
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, String.format("VFY: unable to initialize null ref"));
+	                    break;
+	                }
+
+	                ObjectClass thisClass;
+
+	                thisClass = (ObjectClass)thisType.regTypeReferenceToClass(uninitMap);
+
+	                /* must be in same class or in superclass */
+	                if (calledMethod.getDeclaringClass() == thisClass.getSuperclass()) {
+	                	
+	                    if (thisClass != meth.getDeclaringClass()) {
+	                    	throw new VerifyException(VERIFY_ERROR_GENERIC,"VFY: invoke-direct <init> on super only allowed for 'this' in <init>");
+	                    }
+	                }  else if (calledMethod.getDeclaringClass() != thisClass) {
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC,"VFY: invoke-direct <init> must be on current class or super");
+	                }
+
+	                /* arg must be an uninitialized reference */
+	                if (!thisType.regTypeIsUninitReference()) {
+	                	throw new VerifyException(VERIFY_ERROR_GENERIC, "VFY: can only initialize the uninitialized");
+	                }
+
+	                /*
+	                 * Replace the uninitialized reference with an initialized
+	                 * one, and clear the entry in the uninit map.  We need to
+	                 * do this for all registers that have the same object
+	                 * instance in them, not just the "this" register.
+	                 */
+	                markRefsAsInitialized(workLine, insnRegCount, uninitMap,
+	                    thisType);
+
+	            }
+	            returnType = calledMethod.getMethodReturnType();
+	            setResultRegisterType(workLine, insnRegCount, returnType);
+	            justSetResult = true;
+	        }
+	        break;
+	    case OP_INVOKE_STATIC:
+	    case OP_INVOKE_STATIC_RANGE:
+	    case OP_INVOKE_STATIC_JUMBO:
+	        {
+	            RegType returnType;
+	            Method calledMethod;
+	            boolean isRange;
+
+	            isRange =  (decInsn.getOpcode() == OP_INVOKE_STATIC_RANGE ||
+	                        decInsn.getOpcode() == OP_INVOKE_STATIC_JUMBO);
+	            calledMethod = verifyInvocationArgs(meth, workLine, insnRegCount,
+	                            decInsn, uninitMap, METHOD_STATIC, isRange,
+	                            false);
+
+	            returnType = calledMethod.getMethodReturnType();
+	            setResultRegisterType(workLine, insnRegCount, returnType);
+	            justSetResult = true;
+	        }
+	        break;
+	    case OP_INVOKE_INTERFACE:
+	    case OP_INVOKE_INTERFACE_RANGE:
+	    case OP_INVOKE_INTERFACE_JUMBO:
+	        {
+	            RegType /*thisType,*/ returnType;
+	            Method absMethod;
+	            boolean isRange;
+
+	            isRange =  (decInsn.getOpcode() == OP_INVOKE_INTERFACE_RANGE ||
+	                        decInsn.getOpcode() == OP_INVOKE_INTERFACE_JUMBO);
+	            absMethod = verifyInvocationArgs(meth, workLine, insnRegCount,
+	                            decInsn, uninitMap, METHOD_INTERFACE, isRange,
+	                            false);
+
+
+//	#if 0       re-import this section from the c code when it's ready.
+	            
+//	#endif
+
+	            /*
+	             * We don't have an object instance, so we can't find the
+	             * concrete method.  However, all of the type information is
+	             * in the abstract method, so we're good.
+	             */
+	            returnType = absMethod.getMethodReturnType();
+	            setResultRegisterType(workLine, insnRegCount, returnType);
+	            justSetResult = true;
+	        }
+	        break;
+
+	    case OP_NEG_INT:
+	    case OP_NOT_INT:
+	        checkUnop(workLine, decInsn,
+	            new RegType(kRegTypeInteger), new RegType(kRegTypeInteger));
+	        break;
+	    case OP_NEG_LONG:
+	    case OP_NOT_LONG:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeLongLo), new RegType(kRegTypeLongLo));
+	        break;
+	    case OP_NEG_FLOAT:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeFloat), new RegType(kRegTypeFloat));
+	        break;
+	    case OP_NEG_DOUBLE:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeDoubleLo), new RegType(kRegTypeDoubleLo));
+	        break;
+	    case OP_INT_TO_LONG:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeLongLo), new RegType(kRegTypeInteger));
+	        break;
+	    case OP_INT_TO_FLOAT:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeFloat), new RegType(kRegTypeInteger));
+	        break;
+	    case OP_INT_TO_DOUBLE:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeDoubleLo), new RegType(kRegTypeInteger));
+	        break;
+	    case OP_LONG_TO_INT:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeInteger), new RegType(kRegTypeLongLo));
+	        break;
+	    case OP_LONG_TO_FLOAT:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeFloat), new RegType(kRegTypeLongLo));
+	        break;
+	    case OP_LONG_TO_DOUBLE:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeDoubleLo), new RegType(kRegTypeLongLo));
+	        break;
+	    case OP_FLOAT_TO_INT:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeInteger), new RegType(kRegTypeFloat));
+	        break;
+	    case OP_FLOAT_TO_LONG:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeLongLo), new RegType(kRegTypeFloat));
+	        break;
+	    case OP_FLOAT_TO_DOUBLE:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeDoubleLo), new RegType(kRegTypeFloat));
+	        break;
+	    case OP_DOUBLE_TO_INT:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeInteger), new RegType(kRegTypeDoubleLo));
+	        break;
+	    case OP_DOUBLE_TO_LONG:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeLongLo), new RegType(kRegTypeDoubleLo));
+	        break;
+	    case OP_DOUBLE_TO_FLOAT:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeFloat), new RegType(kRegTypeDoubleLo));
+	        break;
+	    case OP_INT_TO_BYTE:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeByte), new RegType(kRegTypeInteger));
+	        break;
+	    case OP_INT_TO_CHAR:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeChar), new RegType(kRegTypeInteger));
+	        break;
+	    case OP_INT_TO_SHORT:
+	        checkUnop(workLine, decInsn,
+	        		new RegType(kRegTypeShort), new RegType(kRegTypeInteger));
+	        break;
+
+	    case OP_ADD_INT:
+	    case OP_SUB_INT:
+	    case OP_MUL_INT:
+	    case OP_REM_INT:
+	    case OP_DIV_INT:
+	    case OP_SHL_INT:
+	    case OP_SHR_INT:
+	    case OP_USHR_INT:
+	        checkBinop(workLine, decInsn,
+	            kRegTypeInteger, kRegTypeInteger, kRegTypeInteger, false);
+	        break;
+	    case OP_AND_INT:
+	    case OP_OR_INT:
+	    case OP_XOR_INT:
+	        checkBinop(workLine, decInsn,
+	            kRegTypeInteger, kRegTypeInteger, kRegTypeInteger, true);
+	        break;
+	    case OP_ADD_LONG:
+	    case OP_SUB_LONG:
+	    case OP_MUL_LONG:
+	    case OP_DIV_LONG:
+	    case OP_REM_LONG:
+	    case OP_AND_LONG:
+	    case OP_OR_LONG:
+	    case OP_XOR_LONG:
+	        checkBinop(workLine, decInsn,
+	            kRegTypeLongLo, kRegTypeLongLo, kRegTypeLongLo, false);
+	        break;
+	    case OP_SHL_LONG:
+	    case OP_SHR_LONG:
+	    case OP_USHR_LONG:
+	        /* shift distance is Int, making these different from other binops */
+	        checkBinop(workLine, decInsn,
+	            kRegTypeLongLo, kRegTypeLongLo, kRegTypeInteger, false);
+	        break;
+	    case OP_ADD_FLOAT:
+	    case OP_SUB_FLOAT:
+	    case OP_MUL_FLOAT:
+	    case OP_DIV_FLOAT:
+	    case OP_REM_FLOAT:
+	        checkBinop(workLine, decInsn,
+	            kRegTypeFloat, kRegTypeFloat, kRegTypeFloat, false);
+	        break;
+	    case OP_ADD_DOUBLE:
+	    case OP_SUB_DOUBLE:
+	    case OP_MUL_DOUBLE:
+	    case OP_DIV_DOUBLE:
+	    case OP_REM_DOUBLE:
+	        checkBinop(workLine, decInsn,
+	            kRegTypeDoubleLo, kRegTypeDoubleLo, kRegTypeDoubleLo, false);
+	        break;
+	    case OP_ADD_INT_2ADDR:
+	    case OP_SUB_INT_2ADDR:
+	    case OP_MUL_INT_2ADDR:
+	    case OP_REM_INT_2ADDR:
+	    case OP_SHL_INT_2ADDR:
+	    case OP_SHR_INT_2ADDR:
+	    case OP_USHR_INT_2ADDR:
+	        checkBinop2addr(workLine, decInsn,
+	            kRegTypeInteger, kRegTypeInteger, kRegTypeInteger, false);
+	        break;
+	    case OP_AND_INT_2ADDR:
+	    case OP_OR_INT_2ADDR:
+	    case OP_XOR_INT_2ADDR:
+	        checkBinop2addr(workLine, decInsn,
+	            kRegTypeInteger, kRegTypeInteger, kRegTypeInteger, true);
+	        break;
+	    case OP_DIV_INT_2ADDR:
+	        checkBinop2addr(workLine, decInsn,
+	            kRegTypeInteger, kRegTypeInteger, kRegTypeInteger, false);
+	        break;
+	    case OP_ADD_LONG_2ADDR:
+	    case OP_SUB_LONG_2ADDR:
+	    case OP_MUL_LONG_2ADDR:
+	    case OP_DIV_LONG_2ADDR:
+	    case OP_REM_LONG_2ADDR:
+	    case OP_AND_LONG_2ADDR:
+	    case OP_OR_LONG_2ADDR:
+	    case OP_XOR_LONG_2ADDR:
+	        checkBinop2addr(workLine, decInsn,
+	            kRegTypeLongLo, kRegTypeLongLo, kRegTypeLongLo, false);
+	        break;
+	    case OP_SHL_LONG_2ADDR:
+	    case OP_SHR_LONG_2ADDR:
+	    case OP_USHR_LONG_2ADDR:
+	        checkBinop2addr(workLine, decInsn,
+	            kRegTypeLongLo, kRegTypeLongLo, kRegTypeInteger, false);
+	        break;
+	    case OP_ADD_FLOAT_2ADDR:
+	    case OP_SUB_FLOAT_2ADDR:
+	    case OP_MUL_FLOAT_2ADDR:
+	    case OP_DIV_FLOAT_2ADDR:
+	    case OP_REM_FLOAT_2ADDR:
+	        checkBinop2addr(workLine, decInsn,
+	            kRegTypeFloat, kRegTypeFloat, kRegTypeFloat, false);
+	        break;
+	    case OP_ADD_DOUBLE_2ADDR:
+	    case OP_SUB_DOUBLE_2ADDR:
+	    case OP_MUL_DOUBLE_2ADDR:
+	    case OP_DIV_DOUBLE_2ADDR:
+	    case OP_REM_DOUBLE_2ADDR:
+	        checkBinop2addr(workLine, decInsn,
+	            kRegTypeDoubleLo, kRegTypeDoubleLo, kRegTypeDoubleLo, false);
+	        break;
+	    case OP_ADD_INT_LIT16:
+	    case OP_RSUB_INT:
+	    case OP_MUL_INT_LIT16:
+	    case OP_DIV_INT_LIT16:
+	    case OP_REM_INT_LIT16:
+	        checkLitop(workLine, decInsn,
+	            kRegTypeInteger, kRegTypeInteger, false);
+	        break;
+	    case OP_AND_INT_LIT16:
+	    case OP_OR_INT_LIT16:
+	    case OP_XOR_INT_LIT16:
+	        checkLitop(workLine, decInsn,
+	            kRegTypeInteger, kRegTypeInteger, true);
+	        break;
+	    case OP_ADD_INT_LIT8:
+	    case OP_RSUB_INT_LIT8:
+	    case OP_MUL_INT_LIT8:
+	    case OP_DIV_INT_LIT8:
+	    case OP_REM_INT_LIT8:
+	    case OP_SHL_INT_LIT8:
+	        checkLitop(workLine, decInsn,
+	            kRegTypeInteger, kRegTypeInteger, false);
+	        break;
+	    case OP_SHR_INT_LIT8:
+	        tmpType = adjustForRightShift(workLine,
+	            decInsn.getB(), decInsn.getC(), false);
+	        checkLitop(workLine, decInsn,
+	            tmpType.register, kRegTypeInteger, false);
+	        break;
+	    case OP_USHR_INT_LIT8:
+	        tmpType = adjustForRightShift(workLine,
+	            decInsn.getB(), decInsn.getC(), true);
+	        checkLitop(workLine, decInsn,
+	            tmpType.register, kRegTypeInteger, false);
+	        break;
+	    case OP_AND_INT_LIT8:
+	    case OP_OR_INT_LIT8:
+	    case OP_XOR_INT_LIT8:
+	        checkLitop(workLine, decInsn,
+	            kRegTypeInteger, kRegTypeInteger, true);
+	        break;
+
+	    /*
+	     * This falls into the general category of "optimized" instructions,
+	     * which don't generally appear during verification.  Because it's
+	     * inserted in the course of verification, we can expect to see it here.
+	     */
+	    case OP_THROW_VERIFICATION_ERROR:
+	    case OP_THROW_VERIFICATION_ERROR_JUMBO:
+	        break;
+
+	    /*
+	     * Verifying "quickened" instructions is tricky, because we have
+	     * discarded the original field/method information.  The byte offsets
+	     * and vtable indices only have meaning in the context of an object
+	     * instance.
+	     *
+	     * If a piece of code declares a local reference variable, assigns
+	     * null to it, and then issues a virtual method call on it, we
+	     * cannot evaluate the method call during verification.  This situation
+	     * isn't hard to handle, since we know the call will always result in an
+	     * NPE, and the arguments and return value don't matter.  Any code that
+	     * depends on the result of the method call is inaccessible, so the
+	     * fact that we can't fully verify anything that comes after the bad
+	     * call is not a problem.
+	     *
+	     * We must also consider the case of multiple code paths, only some of
+	     * which involve a null reference.  We can completely verify the method
+	     * if we sidestep the results of executing with a null reference.
+	     * For example, if on the first pass through the code we try to do a
+	     * virtual method invocation through a null ref, we have to skip the
+	     * method checks and have the method return a "wildcard" type (which
+	     * merges with anything to become that other thing).  The move-result
+	     * will tell us if it's a reference, single-word numeric, or double-word
+	     * value.  We continue to perform the verification, and at the end of
+	     * the function any invocations that were never fully exercised are
+	     * marked as null-only.
+	     *
+	     * We would do something similar for the field accesses.  The field's
+	     * type, once known, can be used to recover the width of short integers.
+	     * If the object reference was null, the field-get returns the "wildcard"
+	     * type, which is acceptable for any operation.
+	     */
+	    case OP_EXECUTE_INLINE:
+	    case OP_EXECUTE_INLINE_RANGE:
+	    case OP_IGET_QUICK:
+	    case OP_IGET_WIDE_QUICK:
+	    case OP_IGET_OBJECT_QUICK:
+	    case OP_IPUT_QUICK:
+	    case OP_IPUT_WIDE_QUICK:
+	    case OP_IPUT_OBJECT_QUICK:
+	    case OP_INVOKE_VIRTUAL_QUICK:
+	    case OP_INVOKE_VIRTUAL_QUICK_RANGE:
+	    case OP_INVOKE_SUPER_QUICK:
+	    case OP_INVOKE_SUPER_QUICK_RANGE:
+	        /* fall through to failure */
+
+	    /*
+	     * These instructions are equivalent (from the verifier's point of view)
+	     * to the original form.  The change was made for correctness rather
+	     * than improved performance (except for invoke-object-init, which
+	     * provides both).  The substitution takes place after verification
+	     * completes, though, so we don't expect to see them here.
+	     */
+	    case OP_INVOKE_OBJECT_INIT_RANGE:
+	    case OP_INVOKE_OBJECT_INIT_JUMBO:
+	    case OP_RETURN_VOID_BARRIER:
+	    case OP_IGET_VOLATILE:
+	    case OP_IGET_VOLATILE_JUMBO:
+	    case OP_IGET_WIDE_VOLATILE:
+	    case OP_IGET_WIDE_VOLATILE_JUMBO:
+	    case OP_IGET_OBJECT_VOLATILE:
+	    case OP_IGET_OBJECT_VOLATILE_JUMBO:
+	    case OP_IPUT_VOLATILE:
+	    case OP_IPUT_VOLATILE_JUMBO:
+	    case OP_IPUT_WIDE_VOLATILE:
+	    case OP_IPUT_WIDE_VOLATILE_JUMBO:
+	    case OP_IPUT_OBJECT_VOLATILE:
+	    case OP_IPUT_OBJECT_VOLATILE_JUMBO:
+	    case OP_SGET_VOLATILE:
+	    case OP_SGET_VOLATILE_JUMBO:
+	    case OP_SGET_WIDE_VOLATILE:
+	    case OP_SGET_WIDE_VOLATILE_JUMBO:
+	    case OP_SGET_OBJECT_VOLATILE:
+	    case OP_SGET_OBJECT_VOLATILE_JUMBO:
+	    case OP_SPUT_VOLATILE:
+	    case OP_SPUT_VOLATILE_JUMBO:
+	    case OP_SPUT_WIDE_VOLATILE:
+	    case OP_SPUT_WIDE_VOLATILE_JUMBO:
+	    case OP_SPUT_OBJECT_VOLATILE:
+	    case OP_SPUT_OBJECT_VOLATILE_JUMBO:
+	        /* fall through to failure */
+
+	    /* these should never appear during verification */
+	    case OP_UNUSED_3E:
+	    case OP_UNUSED_3F:
+	    case OP_UNUSED_40:
+	    case OP_UNUSED_41:
+	    case OP_UNUSED_42:
+	    case OP_UNUSED_43:
+	    case OP_UNUSED_73:
+	    case OP_UNUSED_79:
+	    case OP_UNUSED_7A:
+	    case OP_BREAKPOINT:
+	    case OP_DISPATCH_FF:
+	    case OP_UNUSED_27FF:
+	    case OP_UNUSED_28FF:
+	    case OP_UNUSED_29FF:
+	    case OP_UNUSED_2AFF:
+	    case OP_UNUSED_2BFF:
+	    case OP_UNUSED_2CFF:
+	    case OP_UNUSED_2DFF:
+	    case OP_UNUSED_2EFF:
+	    case OP_UNUSED_2FFF:
+	    case OP_UNUSED_30FF:
+	    case OP_UNUSED_31FF:
+	    case OP_UNUSED_32FF:
+	    case OP_UNUSED_33FF:
+	    case OP_UNUSED_34FF:
+	    case OP_UNUSED_35FF:
+	    case OP_UNUSED_36FF:
+	    case OP_UNUSED_37FF:
+	    case OP_UNUSED_38FF:
+	    case OP_UNUSED_39FF:
+	    case OP_UNUSED_3AFF:
+	    case OP_UNUSED_3BFF:
+	    case OP_UNUSED_3CFF:
+	    case OP_UNUSED_3DFF:
+	    case OP_UNUSED_3EFF:
+	    case OP_UNUSED_3FFF:
+	    case OP_UNUSED_40FF:
+	    case OP_UNUSED_41FF:
+	    case OP_UNUSED_42FF:
+	    case OP_UNUSED_43FF:
+	    case OP_UNUSED_44FF:
+	    case OP_UNUSED_45FF:
+	    case OP_UNUSED_46FF:
+	    case OP_UNUSED_47FF:
+	    case OP_UNUSED_48FF:
+	    case OP_UNUSED_49FF:
+	    case OP_UNUSED_4AFF:
+	    case OP_UNUSED_4BFF:
+	    case OP_UNUSED_4CFF:
+	    case OP_UNUSED_4DFF:
+	    case OP_UNUSED_4EFF:
+	    case OP_UNUSED_4FFF:
+	    case OP_UNUSED_50FF:
+	    case OP_UNUSED_51FF:
+	    case OP_UNUSED_52FF:
+	    case OP_UNUSED_53FF:
+	    case OP_UNUSED_54FF:
+	    case OP_UNUSED_55FF:
+	    case OP_UNUSED_56FF:
+	    case OP_UNUSED_57FF:
+	    case OP_UNUSED_58FF:
+	    case OP_UNUSED_59FF:
+	    case OP_UNUSED_5AFF:
+	    case OP_UNUSED_5BFF:
+	    case OP_UNUSED_5CFF:
+	    case OP_UNUSED_5DFF:
+	    case OP_UNUSED_5EFF:
+	    case OP_UNUSED_5FFF:
+	    case OP_UNUSED_60FF:
+	    case OP_UNUSED_61FF:
+	    case OP_UNUSED_62FF:
+	    case OP_UNUSED_63FF:
+	    case OP_UNUSED_64FF:
+	    case OP_UNUSED_65FF:
+	    case OP_UNUSED_66FF:
+	    case OP_UNUSED_67FF:
+	    case OP_UNUSED_68FF:
+	    case OP_UNUSED_69FF:
+	    case OP_UNUSED_6AFF:
+	    case OP_UNUSED_6BFF:
+	    case OP_UNUSED_6CFF:
+	    case OP_UNUSED_6DFF:
+	    case OP_UNUSED_6EFF:
+	    case OP_UNUSED_6FFF:
+	    case OP_UNUSED_70FF:
+	    case OP_UNUSED_71FF:
+	    case OP_UNUSED_72FF:
+	    case OP_UNUSED_73FF:
+	    case OP_UNUSED_74FF:
+	    case OP_UNUSED_75FF:
+	    case OP_UNUSED_76FF:
+	    case OP_UNUSED_77FF:
+	    case OP_UNUSED_78FF:
+	    case OP_UNUSED_79FF:
+	    case OP_UNUSED_7AFF:
+	    case OP_UNUSED_7BFF:
+	    case OP_UNUSED_7CFF:
+	    case OP_UNUSED_7DFF:
+	    case OP_UNUSED_7EFF:
+	    case OP_UNUSED_7FFF:
+	    case OP_UNUSED_80FF:
+	    case OP_UNUSED_81FF:
+	    case OP_UNUSED_82FF:
+	    case OP_UNUSED_83FF:
+	    case OP_UNUSED_84FF:
+	    case OP_UNUSED_85FF:
+	    case OP_UNUSED_86FF:
+	    case OP_UNUSED_87FF:
+	    case OP_UNUSED_88FF:
+	    case OP_UNUSED_89FF:
+	    case OP_UNUSED_8AFF:
+	    case OP_UNUSED_8BFF:
+	    case OP_UNUSED_8CFF:
+	    case OP_UNUSED_8DFF:
+	    case OP_UNUSED_8EFF:
+	    case OP_UNUSED_8FFF:
+	    case OP_UNUSED_90FF:
+	    case OP_UNUSED_91FF:
+	    case OP_UNUSED_92FF:
+	    case OP_UNUSED_93FF:
+	    case OP_UNUSED_94FF:
+	    case OP_UNUSED_95FF:
+	    case OP_UNUSED_96FF:
+	    case OP_UNUSED_97FF:
+	    case OP_UNUSED_98FF:
+	    case OP_UNUSED_99FF:
+	    case OP_UNUSED_9AFF:
+	    case OP_UNUSED_9BFF:
+	    case OP_UNUSED_9CFF:
+	    case OP_UNUSED_9DFF:
+	    case OP_UNUSED_9EFF:
+	    case OP_UNUSED_9FFF:
+	    case OP_UNUSED_A0FF:
+	    case OP_UNUSED_A1FF:
+	    case OP_UNUSED_A2FF:
+	    case OP_UNUSED_A3FF:
+	    case OP_UNUSED_A4FF:
+	    case OP_UNUSED_A5FF:
+	    case OP_UNUSED_A6FF:
+	    case OP_UNUSED_A7FF:
+	    case OP_UNUSED_A8FF:
+	    case OP_UNUSED_A9FF:
+	    case OP_UNUSED_AAFF:
+	    case OP_UNUSED_ABFF:
+	    case OP_UNUSED_ACFF:
+	    case OP_UNUSED_ADFF:
+	    case OP_UNUSED_AEFF:
+	    case OP_UNUSED_AFFF:
+	    case OP_UNUSED_B0FF:
+	    case OP_UNUSED_B1FF:
+	    case OP_UNUSED_B2FF:
+	    case OP_UNUSED_B3FF:
+	    case OP_UNUSED_B4FF:
+	    case OP_UNUSED_B5FF:
+	    case OP_UNUSED_B6FF:
+	    case OP_UNUSED_B7FF:
+	    case OP_UNUSED_B8FF:
+	    case OP_UNUSED_B9FF:
+	    case OP_UNUSED_BAFF:
+	    case OP_UNUSED_BBFF:
+	    case OP_UNUSED_BCFF:
+	    case OP_UNUSED_BDFF:
+	    case OP_UNUSED_BEFF:
+	    case OP_UNUSED_BFFF:
+	    case OP_UNUSED_C0FF:
+	    case OP_UNUSED_C1FF:
+	    case OP_UNUSED_C2FF:
+	    case OP_UNUSED_C3FF:
+	    case OP_UNUSED_C4FF:
+	    case OP_UNUSED_C5FF:
+	    case OP_UNUSED_C6FF:
+	    case OP_UNUSED_C7FF:
+	    case OP_UNUSED_C8FF:
+	    case OP_UNUSED_C9FF:
+	    case OP_UNUSED_CAFF:
+	    case OP_UNUSED_CBFF:
+	    case OP_UNUSED_CCFF:
+	    case OP_UNUSED_CDFF:
+	    case OP_UNUSED_CEFF:
+	    case OP_UNUSED_CFFF:
+	    case OP_UNUSED_D0FF:
+	    case OP_UNUSED_D1FF:
+	    case OP_UNUSED_D2FF:
+	    case OP_UNUSED_D3FF:
+	    case OP_UNUSED_D4FF:
+	    case OP_UNUSED_D5FF:
+	    case OP_UNUSED_D6FF:
+	    case OP_UNUSED_D7FF:
+	    case OP_UNUSED_D8FF:
+	    case OP_UNUSED_D9FF:
+	    case OP_UNUSED_DAFF:
+	    case OP_UNUSED_DBFF:
+	    case OP_UNUSED_DCFF:
+	    case OP_UNUSED_DDFF:
+	    case OP_UNUSED_DEFF:
+	    case OP_UNUSED_DFFF:
+	    case OP_UNUSED_E0FF:
+	    case OP_UNUSED_E1FF:
+	    case OP_UNUSED_E2FF:
+	    case OP_UNUSED_E3FF:
+	    case OP_UNUSED_E4FF:
+	    case OP_UNUSED_E5FF:
+	    case OP_UNUSED_E6FF:
+	    case OP_UNUSED_E7FF:
+	    case OP_UNUSED_E8FF:
+	    case OP_UNUSED_E9FF:
+	    case OP_UNUSED_EAFF:
+	    case OP_UNUSED_EBFF:
+	    case OP_UNUSED_ECFF:
+	    case OP_UNUSED_EDFF:
+	    case OP_UNUSED_EEFF:
+	    case OP_UNUSED_EFFF:
+	    case OP_UNUSED_F0FF:
+	    case OP_UNUSED_F1FF:
+            dstType = new RegType(kRegTypeUnknown);
+
+	        break;
+
+	    /*
+	     * DO NOT add a "default" clause here.  Without it the compiler will
+	     * complain if an instruction is missing (which is desirable).
+	     */
+	    }
+
+
+	    // remove post error processing since we're not doing it.
+	    // TODO add post error processing back in.
+
+	    /*
+	     * If we didn't just set the result register, clear it out.  This
+	     * ensures that you can only use "move-result" immediately after the
+	     * result is set.  (We could check this statically, but it's not
+	     * expensive and it makes our debugging output cleaner.)
+	     */
+	    if (!justSetResult) {
+	        int reg = insnRegCount;
+	        setRegisterType(workLine, reg, new RegType(kRegTypeUnknown));
+	        setRegisterType(workLine, reg+1, new RegType(kRegTypeUnknown));
+	    }
+
+	    /*
+	     * Handle "continue".  Tag the next consecutive instruction.
+	     */
+	    if ((nextFlags & kInstrCanContinue) != 0) {
+	        int insnWidth = iList.dvmInsnGetWidth(insnIdx);
+	        if (insnIdx+insnWidth >= insnsSize) {
+	            throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+	                "VFY: execution can walk off end of code area (from %#x)",
+	                insnIdx));
+	        }
+
+	        /*
+	         * The only way to get to a move-exception instruction is to get
+	         * thrown there.  Make sure the next instruction isn't one.
+	         */
+	        if (!iList.checkMoveException(insnIdx+insnWidth))
+	        	throw new VerifyException(VERIFY_ERROR_GENERIC, "check move failed.");
+
+	        if (iList.getRegisterTable().registerLines.get(insnIdx+insnWidth).regTypes != null) {
+	            /*
+	             * Merge registers into what we have for the next instruction,
+	             * and set the "changed" flag if needed.
+	             */
+	        	
+	        	// FIXME activate
+	        	/*
+	            if (!updateRegisters(meth, insnFlags, regTable, insnIdx+insnWidth,
+	                    workLine))
+	                    */
+	            	throw new VerifyException(VERIFY_ERROR_GENERIC, "unable to update registers.");
+	        } else {
+	            /*
+	             * We're not recording register data for the next instruction,
+	             * so we don't know what the prior state was.  We have to
+	             * assume that something has changed and re-evaluate it.
+	             */
+	            iList.dvmInsnSetChanged(insnIdx+insnWidth, true);
+	        }
+	    }
+
+	    /*
+	     * Handle "branch".  Tag the branch target.
+	     *
+	     * NOTE: instructions like OP_EQZ provide information about the state
+	     * of the register when the branch is taken or not taken.  For example,
+	     * somebody could get a reference field, check it for zero, and if the
+	     * branch is taken immediately store that register in a boolean field
+	     * since the value is known to be zero.  We do not currently account for
+	     * that, and will reject the code.
+	     *
+	     * TODO: avoid re-fetching the branch target
+	     */
+	 // TODO uncomment   if ((nextFlags & kInstrCanBranch) != 0) {
+	 // TODO uncomment   bool isConditional;
+
+	 // TODO uncomment   if (!dvmGetBranchOffset(meth, insnFlags, insnIdx, &branchTarget,
+	 // TODO uncomment   &isConditional))
+	 // TODO uncomment   {
+	            /* should never happen after static verification */
+	            // TODO uncomment   LOG_VFY_METH(meth, "VFY: bad branch at %d", insnIdx);
+	        	// TODO uncomment   goto bail;
+	 // TODO uncomment   }
+	     // TODO uncomment   assert(isConditional || (nextFlags & kInstrCanContinue) == 0);
+	     // TODO uncomment   assert(!isConditional || (nextFlags & kInstrCanContinue) != 0);
+
+	     // TODO uncomment   if (!checkMoveException(meth, insnIdx+branchTarget, "branch"))
+	     // TODO uncomment   goto bail;
+
+	        /* update branch target, set "changed" if appropriate */
+	     // TODO uncomment   if (!updateRegisters(meth, insnFlags, regTable, insnIdx+branchTarget,
+	     // TODO uncomment   workLine))
+	     // TODO uncomment   goto bail;
+	 // TODO uncomment   }
+
+	    /*
+	     * Handle "switch".  Tag all possible branch targets.
+	     *
+	     * We've already verified that the table is structurally sound, so we
+	     * just need to walk through and tag the targets.
+	     */
+	 // TODO uncomment   if ((nextFlags & kInstrCanSwitch) != 0) {
+	 // TODO uncomment   int offsetToSwitch = insns[1] | (((s4)insns[2]) << 16);
+	 // TODO uncomment   const u2* switchInsns = insns + offsetToSwitch;
+	 // TODO uncomment   int switchCount = switchInsns[1];
+	 // TODO uncomment   int offsetToTargets, targ;
+
+	 // TODO uncomment   	        if ((*insns & 0xff) == OP_PACKED_SWITCH) {
+	 // TODO uncomment   /* 0=sig, 1=count, 2/3=firstKey */
+	 // TODO uncomment   offsetToTargets = 4;
+	 // TODO uncomment   } else {
+	 // TODO uncomment   /* 0=sig, 1=count, 2..count*2 = keys */
+	 // TODO uncomment   assert((*insns & 0xff) == OP_SPARSE_SWITCH);
+	 // TODO uncomment   offsetToTargets = 2 + 2*switchCount;
+	 // TODO uncomment   }
+
+	        /* verify each switch target */
+	 // TODO uncomment   for (targ = 0; targ < switchCount; targ++) {
+	 // TODO uncomment   int offset, absOffset;
+
+	            /* offsets are 32-bit, and only partly endian-swapped */
+	 // TODO uncomment   offset = switchInsns[offsetToTargets + targ*2] |
+	 // TODO uncomment   	                     (((s4) switchInsns[offsetToTargets + targ*2 +1]) << 16);
+	 // TODO uncomment   absOffset = insnIdx + offset;
+
+	 // TODO uncomment   assert(absOffset >= 0 && absOffset < insnsSize);
+
+	 // TODO uncomment   if (!checkMoveException(meth, absOffset, "switch"))
+	 // TODO uncomment   goto bail;
+
+	 // TODO uncomment   if (!updateRegisters(meth, insnFlags, regTable, absOffset,
+	 // TODO uncomment   workLine))
+	 // TODO uncomment   goto bail;
+	 // TODO uncomment   }
+	 // TODO uncomment   }
+
+	    /*
+	     * Handle instructions that can throw and that are sitting in a
+	     * "try" block.  (If they're not in a "try" block when they throw,
+	     * control transfers out of the method.)
+	     */
+	 // TODO uncomment   if ((nextFlags & kInstrCanThrow) != 0 && dvmInsnIsInTry(insnFlags, insnIdx))
+	 // TODO uncomment   {
+	 // TODO uncomment   const DexCode* pCode = dvmGetMethodCode(meth);
+	 // TODO uncomment   DexCatchIterator iterator;
+	 // TODO uncomment   bool hasCatchAll = false;
+
+	 // TODO uncomment   if (dexFindCatchHandler(&iterator, pCode, insnIdx)) {
+	 // TODO uncomment   for (;;) {
+	 // TODO uncomment   DexCatchHandler* handler = dexCatchIteratorNext(&iterator);
+
+	 // TODO uncomment   if (handler == NULL) {
+	 // TODO uncomment   break;
+	 // TODO uncomment   }
+
+	 // TODO uncomment   if (handler->typeIdx == kDexNoIndex)
+	 // TODO uncomment   hasCatchAll = true;
+
+	                /*
+	                 * Merge registers into the "catch" block.  We want to
+	                 * use the "savedRegs" rather than "workRegs", because
+	                 * at runtime the exception will be thrown before the
+	                 * instruction modifies any registers.
+	                 */
+	 // TODO uncomment   	                if (!updateRegisters(meth, insnFlags, regTable,
+	 // TODO uncomment   handler->address, &regTable->savedLine))
+	 // TODO uncomment   goto bail;
+	 // TODO uncomment   }
+	 // TODO uncomment   }
+
+	        /*
+	         * If the monitor stack depth is nonzero, there must be a "catch all"
+	         * handler for this instruction.  This does apply to monitor-exit
+	         * because of async exception handling.
+	         */
+	 // TODO uncomment   if (workLine->monitorStackTop != 0 && !hasCatchAll) {
+	            /*
+	             * The state in workLine reflects the post-execution state.
+	             * If the current instruction is a monitor-enter and the monitor
+	             * stack was empty, we don't need a catch-all (if it throws,
+	             * it will do so before grabbing the lock).
+	             */
+	 // TODO uncomment   if (!(decInsn.opcode == OP_MONITOR_ENTER &&
+	 // TODO uncomment   workLine->monitorStackTop == 1))
+	 // TODO uncomment   {
+	 // TODO uncomment   LOG_VFY_METH(meth,
+	 // TODO uncomment   "VFY: no catch-all for instruction at 0x%04x", insnIdx);
+	 // TODO uncomment   goto bail;
+	 // TODO uncomment   }
+	 // TODO uncomment   }
+	 // TODO uncomment   }
+
+	    /*
+	     * If we're returning from the method, make sure our monitor stack
+	     * is empty.
+	     */
+	 // TODO uncomment   if ((nextFlags & kInstrCanReturn) != 0 && workLine->monitorStackTop != 0) {
+	 // TODO uncomment   LOG_VFY_METH(meth, "VFY: return with stack depth=%d at 0x%04x",
+	 // TODO uncomment   workLine->monitorStackTop, insnIdx);
+	 // TODO uncomment   goto bail;
+	 // TODO uncomment   }
+
+	    /*
+	     * Update startGuess.  Advance to the next instruction of that's
+	     * possible, otherwise use the branch target if one was found.  If
+	     * neither of those exists we're in a return or throw; leave startGuess
+	     * alone and let the caller sort it out.
+	     */
+	 // TODO uncomment   if ((nextFlags & kInstrCanContinue) != 0) {
+	 // TODO uncomment   *pStartGuess = insnIdx + dvmInsnGetWidth(insnFlags, insnIdx);
+	 // TODO uncomment   } else if ((nextFlags & kInstrCanBranch) != 0) {
+	        /* we're still okay if branchTarget is zero */
+	 // TODO uncomment   *pStartGuess = insnIdx + branchTarget;
+	 // TODO uncomment   }
+
+	 // TODO uncomment   assert(*pStartGuess >= 0 && *pStartGuess < insnsSize &&
+	 // TODO uncomment   dvmInsnGetWidth(insnFlags, *pStartGuess) != 0);
+
+	 // TODO uncomment   result = true;
+
+	 // TODO uncomment   bail:
+	 // TODO uncomment   return result;
+
+	}	}
+
+	public static ObjectClass findCommonSuperclass(DexModel model,
+			ObjectClass c1, ObjectClass c2) throws VerifyException {
+		return (ObjectClass) model
+				.lookupClassByDescriptor(PredefinedClasses.SIG_JAVA_LANG_OBJECT);
+		// TODO implement properly - woul a reverse heirarchy tree work? Or,
+		// perhaps the class pool should be loaded for all classes up to Object?
+	}
+
+	static void dumpRegTypes(VerifierData vdata, RegisterLine registerLine,
+			int addr, String addrName, UninitInstanceMap uninitMap,
+			int displayFlags) {
+		Log.d(LOG_TAG, "TODO: dump register types.");
+	}
+
+	/**
+	 * Implement category-1 "move" instructions. Copy a 32-bit value from "vsrc"
+	 * to "vdst".
+	 */
+	private static void copyRegister1(RegisterLine registerLine, int vdst,
+			int vsrc, CodeVerifyRegisterTypeCategory cat)
+			throws VerifyException {
+		if (cat != kTypeCategory1nr && cat != kTypeCategoryRef)
+			throw new IllegalArgumentException("cannot operate on category "
+					+ cat.toString());
+		RegType type = registerLine.regTypes.get(vsrc);
+		checkTypeCategory(type, cat); // throws VerifyException
+
+		setRegisterType(registerLine, vdst, type);
+		if (cat == kTypeCategoryRef) {
+			registerLine.monitorEntries.set(vdst,
+					registerLine.monitorEntries.get(vsrc));
+		}
+
+	}
+
+	/**
+	 * See if "type" matches "cat". All we're really looking for here is that
+	 * we're not mixing and matching 32-bit and 64-bit quantities, and we're not
+	 * mixing references with numerics. (For example, the arguments to "a < b"
+	 * could be integers of different sizes, but they must both be integers.
+	 * Dalvik is less specific about int vs. float, so we treat them as
+	 * equivalent here.)
+	 * 
+	 * <p>
+	 * For category 2 values, "type" must be the "low" half of the value.
+	 * 
+	 * <p>
+	 * Sets "*pFailure" if something looks wrong.
+	 * 
+	 * @throws VerifyException
+	 */
+	static void checkTypeCategory(RegType type,
+			CodeVerifyRegisterTypeCategory cat) throws VerifyException {
+		switch (cat) {
+		case kTypeCategory1nr:
+			switch (type.register) {
+			case kRegTypeZero:
+			case kRegTypeOne:
+			case kRegTypeBoolean:
+			case kRegTypeConstPosByte:
+			case kRegTypeConstByte:
+			case kRegTypeConstPosShort:
+			case kRegTypeConstShort:
+			case kRegTypeConstChar:
+			case kRegTypeConstInteger:
+			case kRegTypePosByte:
+			case kRegTypeByte:
+			case kRegTypePosShort:
+			case kRegTypeShort:
+			case kRegTypeChar:
+			case kRegTypeInteger:
+			case kRegTypeFloat:
+				break;
+			default:
+				throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+						"VFY: copy1 type=%d cat=%d", type, cat));
+			}
+			break;
+
+		case kTypeCategory2:
+			switch (type.register) {
+			case kRegTypeConstLo:
+			case kRegTypeLongLo:
+			case kRegTypeDoubleLo:
+				break;
+			default:
+				throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+						"VFY: copy1 type=%d cat=%d", type, cat));
+
+			}
+			break;
+
+		case kTypeCategoryRef:
+			if (type.register != kRegTypeZero && !type.regTypeIsReference())
+				throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+						"VFY: copy1 type=%d cat=%d", type, cat));
+
+			break;
+
+		default:
+			throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+					"VFY: copy1 type=%d cat=%d", type, cat));
+		}
+	}
+
+	/**
+	 * Implement category-2 "move" instructions. Copy a 64-bit value from "vsrc"
+	 * to "vdst". This copies both halves of the register.
+	 */
+	static void copyRegister2(RegisterLine registerLine, int vdst, int vsrc)
+			throws VerifyException {
+		RegType typel = registerLine.regTypes.get(vsrc);
+		RegType typeh = registerLine.regTypes.get(vsrc + 1);
+
+		checkTypeCategory(typel, kTypeCategory2); // throws VerifyException
+		checkWidePair(typel, typeh); // throws VerifyException
+		setRegisterType(registerLine, vdst, typel);
+		/* target monitor stack bits will be cleared */
+	}
+
+	/*
+	 * Set the type of register N, verifying that the register is valid. If
+	 * "newType" is the "Lo" part of a 64-bit value, register N+1 will be set to
+	 * "newType+1".
+	 * 
+	 * The register index was validated during the static pass, so we don't need
+	 * to check it here.
+	 * 
+	 * TODO: clear mon stack bits
+	 */
+	static void setRegisterType(RegisterLine registerLine, int vdst,
+			RegType newType) {
+		SparseArray<RegType> insnRegs = registerLine.regTypes;
+
+		switch (newType.register) {
+		case kRegTypeUnknown:
+		case kRegTypeBoolean:
+		case kRegTypeOne:
+		case kRegTypeConstByte:
+		case kRegTypeConstPosByte:
+		case kRegTypeConstShort:
+		case kRegTypeConstPosShort:
+		case kRegTypeConstChar:
+		case kRegTypeConstInteger:
+		case kRegTypeByte:
+		case kRegTypePosByte:
+		case kRegTypeShort:
+		case kRegTypePosShort:
+		case kRegTypeChar:
+		case kRegTypeInteger:
+		case kRegTypeFloat:
+		case kRegTypeZero:
+		case kRegTypeUninit:
+			insnRegs.put(vdst, newType);
+			break;
+		case kRegTypeConstLo:
+		case kRegTypeLongLo:
+		case kRegTypeDoubleLo:
+			insnRegs.put(vdst, newType);
+			RegType rt = new RegType();
+			rt.register = RegisterType.lookup(newType.register.asInt() + 1);
+			insnRegs.put(vdst + 1, rt);
+			break;
+		case kRegTypeConstHi:
+		case kRegTypeLongHi:
+		case kRegTypeDoubleHi:
+			/* should never set these explicitly */
+			throw new RuntimeException(
+					"BUG: explicit set of high register type");
+		case kRegTypeConflict: // should only be set during a merge
+			throw new RuntimeException(String.format(
+					"BUG: set register to unknown type %d", newType));
+
+		default:
+			/* can't switch for ref types, so we check explicitly */
+			if (newType.regTypeIsReference()) {
+				insnRegs.put(vdst, newType);
+
+				/*
+				 * In most circumstances we won't see a reference to a primitive
+				 * class here (e.g. "D"), since that would mean the object in
+				 * the register is actually a primitive type. It can happen as
+				 * the result of an assumed-successful check-cast instruction in
+				 * which the second argument refers to a primitive class. (In
+				 * practice, such an instruction will always throw an
+				 * exception.)
+				 * 
+				 * This is not an issue for instructions like const-class, where
+				 * the object in the register is a java.lang.Class instance.
+				 */
+				break;
+			}
+			/* bad type - fall through */
+		}
+
+		/*
+		 * Clear the monitor entry bits for this register.
+		 */
+		registerLine.monitorEntries.clear(vdst);
+	}
+
+	/**
+	 * <p>
+	 * For a category 2 register pair, verify that "typeh" is the appropriate
+	 * high part for "typel".
+	 * 
+	 * <p>
+	 * Does not verify that "typel" is in fact the low part of a 64-bit register
+	 * pair.
+	 * 
+	 * <p>
+	 * In the Java port this always returns true, and this function is retained
+	 * for name compatability.s
+	 */
+	static void checkWidePair(RegType typel, RegType typeh) {
+		// no-op, throw no exception
+
+	}
+
+	/*
+	 * Implement "move-result". Copy the category-1 value from the result
+	 * register to another register, and reset the result register.
+	 */
+	static void copyResultRegister1(RegisterLine registerLine,
+			int insnRegCount, int vdst, CodeVerifyRegisterTypeCategory cat)
+			throws VerifyException {
+		RegType type;
+		int vsrc;
+
+		if (vdst >= insnRegCount)
+			throw new RuntimeException("destination is invalid");
+
+		vsrc = insnRegCount; // RESULT_REGISTER(insnRegCount);
+		type = registerLine.regTypes.get(vsrc);
+		checkTypeCategory(type, cat); // throws on error on issue
+
+		setRegisterType(registerLine, vdst, type);
+
+		setRegisterType(registerLine, vsrc, new RegType(kRegTypeUnknown));
+		/* target monitor stack bits will be cleared */
+	}
+
+	/*
+	 * Implement "move-result-wide". Copy the category-2 value from the result
+	 * register to another register, and reset the result register.
+	 */
+	static void copyResultRegister2(RegisterLine registerLine,
+			final int insnRegCount, int vdst) throws VerifyException {
+		RegType typel, typeh;
+		int vsrc;
+
+		if (vdst >= insnRegCount)
+			throw new RuntimeException("destination is invalid");
+		vsrc = insnRegCount; // RESULT_REGISTER(insnRegCount);
+		typel = getRegisterType(registerLine, vsrc);
+		typeh = getRegisterType(registerLine, vsrc + 1);
+		checkTypeCategory(typel, kTypeCategory2);
+		checkWidePair(typel, typeh);
+
+		setRegisterType(registerLine, vdst, typel);
+		setRegisterType(registerLine, vsrc, new RegType(kRegTypeUnknown));
+		setRegisterType(registerLine, vsrc + 1, new RegType(kRegTypeUnknown));
+		/* target monitor stack bits will be cleared */
+
+	}
+
+	/**
+	 * This function is not necessary .. it is here for name compatatbility with
+	 * the C library only.
+	 * 
+	 * TODO: remove this function. Some calls have been removed already.
+	 * 
+	 * @param registerLine
+	 * @param vsrc
+	 * @return
+	 */
+	public static RegType getRegisterType(final RegisterLine registerLine,
+			int vsrc) {
+		return registerLine.regTypes.get(vsrc);
+	}
+
+	/**
+	 * <P>
+	 * For the "move-exception" instruction at "insnIdx", which must be at an
+	 * exception handler address, determine the first common superclass of all
+	 * exceptions that can land here. (For javac output, we're probably looking
+	 * at multiple spans of bytecode covered by one "try" that lands at an
+	 * exception-specific "catch", but in general the handler could be shared
+	 * for multiple exceptions.)
+	 * 
+	 * <P>
+	 * Returns NULL if no matching exception handler can be found, or if the
+	 * exception is not a subclass of Throwable.
+	 * 
+	 * @throws VerifyException
+	 */
+	static ObjectClass getCaughtExceptionType(final Method meth, int insnIdx)
+			throws VerifyException {
+		VerifyError localFailure;
+		ObjectClass commonSuper = null;
+		CatchHandler[] catchHandlers = meth.getCatchHandlers();
+
+		int handlersSize = 0;
+
+		if (meth.getTries().length != 0)
+			handlersSize = catchHandlers.length;
+		else
+			handlersSize = 0;
+
+		for (int i = 0; i < handlersSize; i++) {
+
+			CatchHandler handler = catchHandlers[i];
+			int[] addresses = handler.getAddresses();
+			int[] typeIndexes = handler.getTypeIndexes();
+			String[] typeSignatures = handler.getTypeSignatures();
+
+			for (int addr = 0; addr < addresses.length; addr++) {
+				int handlerAddress = addresses[addr];
+				int typeIdx = typeIndexes[addr];
+				String type = typeSignatures[addr];
+
+				if (handler == null) {
+					break;
+				}
+
+				if (handlerAddress == insnIdx) {
+					ObjectClass clazz;
+
+					if (typeIdx == kDexNoIndex)
+						clazz = (ObjectClass) meth
+								.getModel()
+								.lookupClassByDescriptor(
+										PredefinedClasses.SIG_JAVA_LANG_THROWABLE);
+					else
+						clazz = (ObjectClass) meth.getModel()
+								.lookupClassByDescriptor(typeSignatures[addr]); // dvmOptResolveClass(meth.getDeclaringClass(),
+																				// typeIdx
+																				// );
+
+					if (clazz == null) {
+						throw new VerifyException(
+								VerifyErrorCause.VERIFY_ERROR_GENERIC,
+								String.format(
+										"VFY: unable to resolve exception class %u (%s)",
+										typeIdx, type));
+						/*
+						 * we don't want to keep going. If we don't fail this we
+						 * run the risk of having a non-Throwable introduced at
+						 * runtime. However, that won't pass an instanceof test,
+						 * so is essentially harmless.
+						 */
+					} else {
+						if (commonSuper == null)
+							commonSuper = clazz;
+						else
+							commonSuper = findCommonSuperclass(meth.getModel(),
+									clazz, commonSuper);
+					}
+				}
+			}
+
+		}
+
+		if (commonSuper == null) {
+			/* no catch blocks, or no catches with classes we can find */
+			throw new VerifyException(
+					VerifyErrorCause.VERIFY_ERROR_GENERIC,
+					String.format(
+							"VFY: unable to find exception handler at addr %#x for method %s",
+							insnIdx, meth.getMethodName()));
+
+		} else {
+			// TODO: verify the class is an instance of Throwable?
+		}
+
+		return commonSuper;
+	}
+
+	/**
+	 * Check constraints on constructor return. Specifically, make sure that the
+	 * "this" argument got initialized.
+	 * 
+	 * The "this" argument to <init> uses code offset kUninitThisArgAddr, which
+	 * puts it at the start of the list in slot 0. If we see a register with an
+	 * uninitialized slot 0 reference, we know it somehow didn't get
+	 * initialized.
+	 * 
+	 * Returns "true" if all is well.
+	 */
+	static boolean checkConstructorReturn(final Method meth,
+			final RegisterLine registerLine, final int insnRegCount) {
+		int i;
+
+		if (!meth.isInitMethod())
+			return true;
+
+		RegType uninitThis = regTypeFromUninitIndex(CodeVerifyConstants.kUninitThisArgSlot);
+
+		for (i = 0; i < insnRegCount; i++) {
+			if (registerLine.regTypes.get(i) == uninitThis) {
+				Log.e(LOG_TAG,
+						"VFY: <init> returning without calling superclass init");
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Get the value from a register, and cast it to a ClassObject. Sets
+	 * "*pFailure" if something fails.
+	 * 
+	 * This fails if the register holds an uninitialized class.
+	 * 
+	 * If the register holds kRegTypeZero, this returns a NULL pointer.
+	 * 
+	 * @throws VerifyException
+	 */
+	private static Clazz getClassFromRegister(final RegisterLine registerLine,
+			int vsrc) throws VerifyException {
+		ObjectClass clazz = null;
+		RegType type;
+
+		/* get the element type of the array held in vsrc */
+		type = getRegisterType(registerLine, vsrc);
+
+		/* if "always zero", we allow it to fail at runtime */
+		if (type.register == kRegTypeZero)
+			return clazz;
+
+		if (!type.regTypeIsReference()) {
+			throw new VerifyException(
+					VERIFY_ERROR_GENERIC,
+					String.format(
+							"VFY: tried to get class from non-ref register v%d (type=%d)",
+							vsrc, type));
+		}
+		if (type.regTypeIsUninitReference()) {
+			throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+					"VFY: register %u holds uninitialized reference", vsrc));
+		}
+
+		return (ObjectClass) type.regTypeInitializedReferenceToClass();
+	}
+
+	/*
+	 * Handle a monitor-enter instruction.
+	 */
+	public static void handleMonitorEnter(RegisterLine workLine, int regIdx,
+			int insnIdx) throws VerifyException {
+		if (!getRegisterType(workLine, regIdx).regTypeIsReference()) {
+			throw new VerifyException(VERIFY_ERROR_GENERIC,
+					"VFY: monitor-enter on non-object");
+		}
+
+		if (workLine.monitorStack.size() == 0) {
+			throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+					"VFY: monitor-enter stack overflow (%d)",
+					CodeVerifyConstants.kMaxMonitorStackDepth));
+		}
+
+		/*
+		 * Push an entry on the stack, and set a bit in the register flags to
+		 * indicate that it's associated with this register.
+		 */
+		workLine.monitorEntries.set(regIdx);
+		BitVector bv = new BitVector();
+		bv.set(insnIdx);
+		workLine.monitorStack.push(bv);
+	}
+
+	/*
+	 * Handle a monitor-exit instruction.
+	 */
+	public static void handleMonitorExit(RegisterLine workLine, int regIdx,
+			int insnIdx) throws VerifyException {
+		if (!getRegisterType(workLine, regIdx).regTypeIsReference()) {
+			throw new VerifyException(VERIFY_ERROR_GENERIC,
+					"VFY: monitor-exit on non-object");
+		}
+
+		if (workLine.monitorStack.size() == 0) {
+			throw new VerifyException(VERIFY_ERROR_GENERIC,
+					"VFY: monitor-exit stack underflow");
+		}
+
+		/*
+		 * Confirm that the entry at the top of the stack is associated with the
+		 * register. Pop the top entry off.
+		 * 
+		 * FIXME: implement correctly.
+		 */
+		BitVector bv = workLine.monitorStack.pop();
+		// #ifdef BUG_3215458_FIXED
+		/*
+		 * TODO: This code can safely be enabled if know we are working on a dex
+		 * file of format version 036 or later. (That is, we'll need to add a
+		 * check for the version number.)
+		 */
+		/*
+		 * if ((workLine->monitorEntries[regIdx] & (1 <<
+		 * workLine->monitorStackTop)) == 0) {
+		 * LOG_VFY("VFY: monitor-exit bit %d not set: addr=0x%04x (bits[%d]=%#x)"
+		 * , workLine->monitorStackTop, insnIdx, regIdx,
+		 * workLine->monitorEntries[regIdx]);pFailure = VERIFY_ERROR_GENERIC;
+		 * return; }
+		 */
+		// #endif
+		// workLine->monitorStack[workLine->monitorStackTop] = 0;
+
+		/*
+		 * Clear the bit from the register flags.
+		 */
+		workLine.monitorEntries.clear(regIdx); // &= ~(1 <<
+												// workLine->monitorStackTop);
+	}
+
+	/**
+	 * We're creating a new instance of class C at address A. Any registers
+	 * holding instances previously created at address A must be initialized by
+	 * now. If not, we mark them as "conflict" to prevent them from being used
+	 * (otherwise, markRefsAsInitialized would mark the old ones and the new
+	 * ones at the same time).
+	 */
+	static void markUninitRefsAsInvalid(RegisterLine registerLine,
+			int insnRegCount, UninitInstanceMap uninitMap, RegType uninitType) {
+		SparseArray<RegType> insnRegs = registerLine.regTypes;
+		int i, changed;
+
+		changed = 0;
+		for (i = 0; i < insnRegCount; i++) {
+			if (insnRegs.valueAt(i) == uninitType) {
+				insnRegs.setValueAt(i, new RegType(kRegTypeConflict));
+				registerLine.monitorEntries.clear(i);
+				changed++;
+			}
+		}
+
+		// if (changed)
+		// LOGD("VFY: marked %d uninitialized registers as invalid", changed);
+	}
+
+	/*
+	 * Verify that the arguments in a filled-new-array instruction are valid.
+	 * 
+	 * "resClass" is the class refered to by pDecInsn->vB.
+	 */
+	static void verifyFilledNewArrayRegs(Method meth,
+			RegisterLine registerLine, final DecodedInstruction pDecInsn,
+			ArrayClass resClass, boolean isRange) throws VerifyException {
+		int argCount = pDecInsn.getA();
+		RegType expectedType;
+		int ui;
+
+		ArrayClass arrResClass = (ArrayClass) resClass;
+		if (arrResClass.elementClass() instanceof PrimitiveClass) {
+			expectedType = PrimitiveType
+					.primitiveTypeToRegType(((PrimitiveClass) arrResClass
+							.elementClass()).primitiveTypeEnum());
+		} else {
+			expectedType = regTypeFromClass(arrResClass.elementClass());
+		}
+
+		Log.i(LOG_TAG,
+				String.format("filled-new-array: %s -> %d",
+						resClass.getSignature(), expectedType));
+
+		/*
+		 * Verify each register. If "argCount" is bad, verifyRegisterType() will
+		 * run off the end of the list and fail. It's legal, if silly, for
+		 * argCount to be zero.
+		 */
+		for (ui = 0; ui < argCount; ui++) {
+			int getReg;
+
+			if (isRange)
+				getReg = pDecInsn.getC() + ui;
+			else
+				getReg = pDecInsn.arg[ui];
+
+			try {
+				verifyRegisterType(registerLine, getReg, expectedType);
+			} catch (VerifyException ex) {
+				throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+						"VFY: filled-new-array arg %u(%u) not valid", ui,
+						getReg));
+			}
+		}
+	}
+
+	// NOTE: RESULT_REGISTER does nothing. it is a C macro that simply replaces
+	// an integer with itself.
+
+	/*
+	 * Set the type of the "result" register.
+	 */
+	private static void setResultRegisterType(RegisterLine registerLine,
+			final int insnRegCount, RegType newType) {
+		setRegisterType(registerLine, insnRegCount, newType);
+	}
+
+	/*
+	 * Make sure that the register type is suitable for use as an array index.
+	 * 
+	 * Sets "*pFailure" if not.
+	 */
+	private static void checkArrayIndexType(final Method meth, RegType regType)
+			throws VerifyException {
+
+		/*
+		 * The 1nr types are interchangeable at this level. However, check that
+		 * a float is not used as the index.
+		 */
+		checkTypeCategory(regType, kTypeCategory1nr);
+		if (regType.register == kRegTypeFloat) {
+			throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+					"Invalid reg type for array index (%d) in method %s",
+					regType, meth.getPrototype().getShorty()));
+		}
+
+	}
+
+	/*
+	 * Determine whether or not "instrType" and "targetType" are compatible, for
+	 * purposes of getting or setting a value in a field or array. The idea is
+	 * that an instruction with a category 1nr type (say, aget-short or
+	 * iput-boolean) is accessing a static field, instance field, or array
+	 * entry, and we want to make sure sure that the operation is legal.
+	 * 
+	 * At a minimum, source and destination must have the same width. We further
+	 * refine this to assert that "short" and "char" are not compatible, because
+	 * the sign-extension is different on the "get" operations.
+	 * 
+	 * We're not considering the actual contents of the register, so we'll never
+	 * get "pseudo-types" like kRegTypeZero or kRegTypePosShort. We could get
+	 * kRegTypeUnknown in "targetType" if a field or array class lookup failed.
+	 * Category 2 types and references are checked elsewhere.
+	 */
+	private static boolean checkFieldArrayStore1nr(RegType instrType,
+			RegType targetType) {
+		return (instrType.register == targetType.register);
+	}
+
+	private static void aput_1nr_common(Method meth, RegType tmpType,
+			RegisterLine workLine, DecodedInstruction decInsn)
+			throws VerifyException {
+		RegType srcType, dstType, indexType;
+
+		indexType = getRegisterType(workLine, decInsn.getC());
+		checkArrayIndexType(meth, indexType);
+
+		srcType = getRegisterType(workLine, decInsn.getA());
+
+		/* correct if float */
+		if (srcType.register == kRegTypeFloat
+				&& tmpType.register == kRegTypeInteger)
+			tmpType = new RegType(kRegTypeFloat);
+
+		/* make sure the source register has the correct type */
+		// TODO uncomment   if (!canConvertTo1nr(srcType, tmpType)) {
+		// TODO uncomment   throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+		// TODO uncomment   "VFY: invalid reg type %d on aput instr (need %d)",
+		// TODO uncomment   srcType, tmpType));
+		// TODO uncomment   failure = VERIFY_ERROR_GENERIC;
+		// TODO uncomment   break;
+		// TODO uncomment   }
+
+		// TODO uncomment   resClass = getClassFromRegister(workLine, decInsn.getB());
+
+		/* resClass can be null if the reg type is Zero */
+		// TODO uncomment   if (resClass == null)
+		// TODO uncomment   break;
+
+		// TODO uncomment   if (!resClass.dvmIsArrayClass()
+		// TODO uncomment   || ((ArrayClass) resClass).getarrayDim() != 1
+		// TODO uncomment   || !(((ArrayClass) resClass).elementClass() instanceof PrimitiveClass)) {
+		// TODO uncomment   throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+		// TODO uncomment   "VFY: invalid aput-1nr on %s", resClass.getSignature()));
+		// TODO uncomment   break;
+		// TODO uncomment   }
+
+		// TODO uncomment   ArrayClass arrResClass = (ArrayClass) resClass;
+
+		/* verify that instruction matches array */
+		// TODO uncomment   dstType = PrimitiveType
+		// TODO uncomment   .primitiveTypeToRegType(((PrimitiveClass) arrResClass
+		// TODO uncomment   .elementClass()).primitiveTypeEnum());
+
+		/* correct if float */
+		if (dstType.register == kRegTypeFloat
+				&& tmpType.register == kRegTypeInteger)
+			tmpType = new RegType(kRegTypeFloat);
+
+		verifyRegisterType(workLine, decInsn.getA(), dstType);
+
+		if (dstType.register == kRegTypeUnknown
+				|| !checkFieldArrayStore1nr(tmpType, dstType)) {
+			// TODO uncomment   throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+			// TODO uncomment   "VFY: invalid aput-1nr on %s (inst=%d dst=%d)",
+			// TODO uncomment   resClass.getSignature(), tmpType, dstType));
+			break;
+		}
+	}
+
+	private static void iget_1nr_common(Method meth,
+			UninitInstanceMap uninitMap, RegisterLine workLine,
+			DecodedInstruction decInsn) throws VerifyException {
+		Field instField;
+		RegType objType, fieldType;
+
+		objType = getRegisterType(workLine, decInsn.getB());
+		instField = getInstField(meth, uninitMap, objType, decInsn.getC());
+
+		/* make sure the field's type is compatible with expectation */
+		// TODO uncomment   fieldType = primSigCharToRegType(instField.getType().charAt(0));
+
+		/* correct if float */
+		// TODO uncomment   if (fieldType.register == kRegTypeFloat
+		// TODO uncomment   && tmpType.register == kRegTypeInteger)
+		// TODO uncomment   tmpType.register = kRegTypeFloat;
+
+		// TODO uncomment   if (fieldType.register == kRegTypeUnknown
+		// TODO uncomment   || !checkFieldArrayStore1nr(tmpType, fieldType)) {
+		// TODO uncomment   throw VerifyException(VERIFY_ERROR_GENERIC, String.format(
+		// TODO uncomment   "VFY: invalid iget-1nr of %s.%s (inst=%d field=%d)",
+		// TODO uncomment   instField.getDefiningClass().getSignature(),
+		// TODO uncomment   instField.getName(), tmpType, fieldType));
+
+		// TODO uncomment   break;
+			// TODO uncomment   }
+
+	// TODO uncomment   setRegisterType(workLine, decInsn.vA, tmpType);
+	}
+
+	public static final int kDexNoIndex = 0xffffffff;
+
+	/*
+	 * Look up an instance field, specified by "fieldIdx", that is going to be
+	 * accessed in object "objType". This resolves the field and then verifies
+	 * that the class containing the field is an instance of the reference in
+	 * "objType".
+	 * 
+	 * It is possible for "objType" to be kRegTypeZero, meaning that we might
+	 * have a null reference. This is a runtime problem, so we allow it,
+	 * skipping some of the type checks.
+	 * 
+	 * In general, "objType" must be an initialized reference. However, we allow
+	 * it to be uninitialized if this is an "<init>" method and the field is
+	 * declared within the "objType" class.
+	 * 
+	 * Returns an InstField on success, returns NULL and sets "*pFailure" on
+	 * failure.
+	 */
+	private static Field getInstField(final Method meth,
+			final UninitInstanceMap uninitMap, RegType objType, int fieldIdx)
+			throws VerifyException {
+		Field instField = null;
+		ObjectClass objClass;
+		boolean mustBeLocal = false;
+
+		if (!objType.regTypeIsReference()) {
+			throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+					"VFY: attempt to access field in non-reference type %d",
+					objType));
+		}
+
+		instField = ((ObjectClass) meth.getDeclaringClass())
+				.findFieldByFieldIndex(fieldIdx); // throws exception if the
+													// field cannot be found.
+
+		if (objType.register == kRegTypeZero)
+			return instField;
+
+		/*
+		 * Access to fields in uninitialized objects is allowed if this is the
+		 * <init> method for the object and the field in question is declared by
+		 * this class.
+		 */
+		objClass = (ObjectClass) objType.regTypeReferenceToClass(uninitMap);
+		assert (objClass != null);
+		if (objType.regTypeIsUninitReference()) {
+			if (!meth.isInitMethod()
+					|| !meth.getDeclaringClass().equals(objClass)) {
+				throw new VerifyException(VERIFY_ERROR_GENERIC,
+						"VFY: attempt to access field via uninitialized ref");
+			}
+			mustBeLocal = true;
+		}
+
+		if (!ObjectClass.dvmInstanceof(objClass,
+				(ObjectClass) instField.getDefiningClass())) {
+			throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+					"VFY: invalid field access (field %s.%s, through %s ref)",
+					instField.getDefiningClass().getSignature(),
+					instField.getName(), objClass.getSignature()));
+
+		}
+
+		if (mustBeLocal) {
+			/* for uninit ref, make sure it's defined by this class, not super */
+			if (!objClass.isInstanceFieldOf(instField)) {
+				throw new VerifyException(
+						VERIFY_ERROR_GENERIC,
+						String.format(
+								"VFY: invalid constructor field access (field %s in %s)",
+								instField.getName(), objClass.getSignature()));
+			}
+		}
+
+		return instField;
+
+	}
+
+	private static void iput_1nr_common(RegisterLine workLine,
+			DecodedInstruction decInsn, RegType tmpType) {
+		RegType srcType, fieldType, objType;
+		Field instField;
+
+		srcType = getRegisterType(workLine, decInsn.getA());
+
+		/*
+		 * javac generates synthetic functions that write byte values into
+		 * boolean fields.
+		 */
+		if (tmpType.register == kRegTypeBoolean
+				&& srcType.register == kRegTypeByte)
+			tmpType = new RegType(kRegTypeByte);
+
+		/* correct if float */
+		if (srcType.register == kRegTypeFloat
+				&& tmpType.register == kRegTypeInteger)
+			tmpType = new RegType(kRegTypeFloat);
+
+		/* make sure the source register has the correct type */
+		// TODO uncomment   if (!canConvertTo1nr(srcType, tmpType)) {
+		// TODO uncomment   throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+		// TODO uncomment   "VFY: invalid reg type %d on iput instr (need %d)",
+		// TODO uncomment   srcType, tmpType));
+
+		// TODO uncomment   break;
+		// TODO uncomment   }
+
+		// TODO uncomment   objType = getRegisterType(workLine, decInsn.getB());
+		// TODO uncomment   instField = getInstField(meth, uninitMap, objType, decInsn.getC());
+
+		// TODO uncomment   checkFinalFieldAccess(meth, instField);
+
+		/* get type of field we're storing into */
+		// TODO uncomment   fieldType = primSigCharToRegType(instField.getType().charAt(0));
+
+		/* correct if float */
+		if (fieldType.register == kRegTypeFloat
+				&& tmpType.register == kRegTypeInteger)
+			tmpType = new RegType(kRegTypeFloat);
+
+		if (fieldType.register == kRegTypeBoolean
+				&& srcType.register == kRegTypeByte)
+			fieldType = new RegType(kRegTypeByte);
+
+		verifyRegisterType(workLine, decInsn.getA(), fieldType);
+
+		if (fieldType.register == kRegTypeUnknown
+				|| !checkFieldArrayStore1nr(tmpType, fieldType)) {
+			throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+					"VFY: invalid iput-1nr of %s.%s (inst=%d field=%d)",
+					instField.getDefiningClass().getSignature(),
+					instField.getName(), tmpType, fieldType));
+			break;
+		}
+	}
+
+	private static void sget_1nr_common(Method meth, DecodedInstruction decInsn) {
+		Field staticField;
+		RegType fieldType;
+		ObjectClass methClass = (ObjectClass) meth.getDeclaringClass();
+
+		staticField = methClass.findStaticFieldByFieldIndex(decInsn.getB());
+
+		/*
+		 * Make sure the field's type is compatible with expectation. We can get
+		 * ourselves into trouble if we mix & match loads and stores with
+		 * different widths, so rather than just checking "canConvertTo1nr" we
+		 * require that the field types have equal widths.
+		 */
+		// TODO uncomment   fieldType = primSigCharToRegType(staticField.getType().charAt(0));
+
+		/* correct if float */
+		// TODO uncomment   if (fieldType == kRegTypeFloat && tmpType == kRegTypeInteger)
+		// TODO uncomment   tmpType = kRegTypeFloat;
+
+		// TODO uncomment   if (!checkFieldArrayStore1nr(tmpType, fieldType)) {
+		// TODO uncomment   throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+		// TODO uncomment   "VFY: invalid sget-1nr of %s.%s (inst=%d actual=%d)",
+		// TODO uncomment   staticField.getDefiningClass().getSignature(),
+		// TODO uncomment   staticField.getName(), tmpType, fieldType));
+		// TODO uncomment   break;
+		// TODO uncomment   }
+
+		// TODO uncomment   setRegisterType(workLine, decInsn.getA(), tmpType);
+	}
+
+	private static void sput_1nr_common(Method meth, RegisterLine workLine,
+			DecodedInstruction decInsn, RegType tmpType) {
+		RegType srcType, fieldType;
+		Field staticField;
+
+		srcType = getRegisterType(workLine, decInsn.getA());
+		ObjectClass methClass = (ObjectClass) meth.getDeclaringClass();
+		/*
+		 * javac generates synthetic functions that write byte values into
+		 * boolean fields.
+		 */
+		if (tmpType.register == kRegTypeBoolean
+				&& srcType.register == kRegTypeByte)
+			tmpType.register = kRegTypeByte;
+
+		/* correct if float */
+		if (srcType.register == kRegTypeFloat
+				&& tmpType.register == kRegTypeInteger)
+			tmpType.register = kRegTypeFloat;
+
+		/* make sure the source register has the correct type */
+		// TODO uncomment   if (!canConvertTo1nr(srcType, tmpType)) {
+		// TODO uncomment   throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+		// TODO uncomment   "VFY: invalid reg type %d on sput instr (need %d)",
+		// TODO uncomment   srcType, tmpType));
+		// TODO uncomment   }
+
+		// TODO uncomment   staticField = mechClass.findgetStaticField(meth, decInsn.getB());
+
+		// TODO uncomment   checkFinalFieldAccess(meth, staticField);
+
+		/*
+		 * Get type of field we're storing into. We know that the contents of
+		 * the register match the instruction, but we also need to ensure that
+		 * the instruction matches the field type. Using e.g. sput-short to
+		 * write into a 32-bit integer field can lead to trouble if we do 16-bit
+		 * writes.
+		 */
+		// TODO uncomment   fieldType = primSigCharToRegType(staticField.getType().charAt(0));
+
+		/* correct if float */
+		if (fieldType.register == kRegTypeFloat
+				&& tmpType.register == kRegTypeInteger)
+			tmpType.register = kRegTypeFloat;
+
+		if (fieldType.register == kRegTypeBoolean
+				&& srcType.register == kRegTypeByte)
+			fieldType.register = kRegTypeByte;
+
+		verifyRegisterType(workLine, decInsn.getA(), fieldType);
+
+		// TODO uncomment   if (fieldType == kRegTypeUnknown
+		// TODO uncomment   || !checkFieldArrayStore1nr(tmpType, fieldType)) {
+		// TODO uncomment   throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+		// TODO uncomment   "VFY: invalid sput-1nr of %s.%s (inst=%d actual=%d)",
+		// TODO uncomment   staticField.getDefiningClass().getSignature(),
+		// TODO uncomment   staticField.getName(), tmpType, fieldType));
+		// TODO uncomment   break;
+		// TODO uncomment   }
+	}
+
+	
+/**
+	 * Verify the arguments to a method.  We're executing in "method", making
+	 * a call to the method reference in vB.
+	 *
+	 * If this is a "direct" invoke, we allow calls to <init>.  For calls to
+	 * <init>, the first argument may be an uninitialized reference.  Otherwise,
+	 * calls to anything starting with '<' will be rejected, as will any
+	 * uninitialized reference arguments.
+	 *
+	 * For non-static method calls, this will verify that the method call is
+	 * appropriate for the "this" argument.
+	 *
+	 * The method reference is in vBBBB.  The "isRange" parameter determines
+	 * whether we use 0-4 "args" values or a range of registers defined by
+	 * vAA and vCCCC.
+	 *
+	 * Widening conversions on integers and references are allowed, but
+	 * narrowing conversions are not.
+	 *
+	 * Returns the resolved method on success, NULL on failure (with *pFailure
+	 * set appropriately).
+	 */
+	private static Method verifyInvocationArgs(final Method meth,
+	    RegisterLine registerLine, final int insnRegCount,
+	    final DecodedInstruction pDecInsn, UninitInstanceMap uninitMap,
+	    MethodType methodType, boolean isRange, boolean isSuper)
+	{
+	   	}
+
+	/**
+	 * Update all registers holding "uninitType" to instead hold the
+	 * corresponding initialized reference type. This is called when an
+	 * appropriate <init> method is invoked -- all copies of the reference must
+	 * be marked as initialized.
+	 * 
+	 * @throws VerifyException
+	 */
+	private static void markRefsAsInitialized(RegisterLine registerLine,
+			int insnRegCount, UninitInstanceMap uninitMap, RegType uninitType)
+			throws VerifyException {
+		SparseArray<RegType> insnRegs = registerLine.regTypes;
+		ObjectClass clazz;
+		RegType initType;
+		int i, changed;
+
+		clazz = (ObjectClass) uninitMap.get(uninitType.regTypeToUninitIndex());
+		if (clazz == null) {
+			throw new VerifyException(VERIFY_ERROR_GENERIC, String.format(
+					"VFY: unable to find type=%#x (idx=%d)", uninitType,
+					uninitType.regTypeToUninitIndex()));
+		}
+		initType = regTypeFromClass(clazz);
+
+		changed = 0;
+		for (i = 0; i < insnRegCount; i++) {
+			if (insnRegs.get(i) == uninitType) {
+				insnRegs.put(i, initType);
+				changed++;
+			}
+		}
+		Log.d(LOG_TAG, String.format("VFY: marked %d registers as initialized",
+				changed));
+
+		return;
+	}
+
+	/*
+	 * Verify types for a simple two-register instruction (e.g. "neg-int").
+	 * "dstType" is stored into vA, and "srcType" is verified against vB.
+	 */
+	static void checkUnop(RegisterLine registerLine,
+			DecodedInstruction pDecInsn, RegType dstType, RegType srcType)
+			throws VerifyException {
+		verifyRegisterType(registerLine, pDecInsn.getB(), srcType);
+		setRegisterType(registerLine, pDecInsn.getA(), dstType);
+	}
+
+	/*
+	 * Verify types for a simple three-register instruction (e.g. "add-int").
+	 * "dstType" is stored into vA, and "srcType1"/"srcType2" are verified
+	 * against vB/vC.
+	 */
+	static void checkBinop(RegisterLine registerLine,
+			DecodedInstruction pDecInsn, RegisterType dt, RegisterType st1,
+			RegisterType st2, boolean checkBooleanOp) throws VerifyException {
+		RegType dstType = new RegType(dt);
+		RegType srcType1 = new RegType(st1);
+		RegType srcType2 = new RegType(st2);
+
+		verifyRegisterType(registerLine, pDecInsn.getB(), srcType1);
+		verifyRegisterType(registerLine, pDecInsn.getC(), srcType2);
+		if (checkBooleanOp) {
+			if (dstType.register != kRegTypeInteger)
+				throw new RuntimeException("register type mismatch.");
+
+			if (upcastBooleanOp(registerLine, pDecInsn.getB(), pDecInsn.getC()))
+				dstType.register = kRegTypeBoolean;
+		}
+		setRegisterType(registerLine, pDecInsn.getA(), dstType);
+	}
+
+	/**
+	 * We're performing an operation like "and-int/2addr" that can be performed
+	 * on booleans as well as integers. We get no indication of boolean-ness,
+	 * but we can infer it from the types of the arguments.
+	 * 
+	 * Assumes we've already validated reg1/reg2.
+	 * 
+	 * TODO: consider generalizing this. The key principle is that the result of
+	 * a bitwise operation can only be as wide as the widest of the operands.
+	 * You can safely AND/OR/XOR two chars together and know you still have a
+	 * char, so it's reasonable for the compiler or "dx" to skip the int-to-char
+	 * instruction. (We need to do this for boolean because there is no
+	 * int-to-boolean operation.)
+	 * 
+	 * Returns true if both args are Boolean, Zero, or One.
+	 */
+	static boolean upcastBooleanOp(RegisterLine registerLine, int reg1, int reg2) {
+		RegType type1, type2;
+
+		type1 = getRegisterType(registerLine, reg1);
+		type2 = getRegisterType(registerLine, reg2);
+
+		if ((type1.register == kRegTypeBoolean
+				|| type1.register == kRegTypeZero || type1.register == kRegTypeOne)
+				&& (type2.register == kRegTypeBoolean
+						|| type2.register == kRegTypeZero || type2.register == kRegTypeOne)) {
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Verify types for a binary "2addr" operation. "srcType1"/"srcType2" are
+	 * verified against vA/vB, then "dstType" is stored into vA.
+	 * 
+	 * @throws VerifyException
+	 */
+	static void checkBinop2addr(RegisterLine registerLine,
+			DecodedInstruction pDecInsn, RegisterType dt, RegisterType st1,
+			RegisterType st2, boolean checkBooleanOp) throws VerifyException {
+		RegType dstType = new RegType(dt);
+		RegType srcType1 = new RegType(st1);
+		RegType srcType2 = new RegType(st2);
+
+		verifyRegisterType(registerLine, pDecInsn.getA(), srcType1);
+		verifyRegisterType(registerLine, pDecInsn.getB(), srcType2);
+		if (checkBooleanOp) {
+			if (dstType.register != kRegTypeInteger)
+				throw new RuntimeException("register type mismatch");
+			if (upcastBooleanOp(registerLine, pDecInsn.getA(), pDecInsn.getB()))
+				dstType.register = kRegTypeBoolean;
+		}
+		setRegisterType(registerLine, pDecInsn.getA(), dstType);
+	}
+
+	/*
+	 * Verify types for A two-register instruction with a literal constant (e.g.
+	 * "add-int/lit8"). "dstType" is stored into vA, and "srcType" is verified
+	 * against vB.
+	 * 
+	 * If "checkBooleanOp" is set, we use the constant value in vC.
+	 */
+	static void checkLitop(RegisterLine registerLine,
+			DecodedInstruction pDecInsn, RegisterType dt, RegisterType st,
+			boolean checkBooleanOp) throws VerifyException {
+		RegType dstType = new RegType(dt);
+		RegType srcType = new RegType(st);
+
+		verifyRegisterType(registerLine, pDecInsn.getB(), srcType);
+		if (checkBooleanOp) {
+			if (dstType.register != kRegTypeInteger)
+				throw new RuntimeException("register type mismatch");
+
+			/* check vB with the call, then check the constant manually */
+			if (upcastBooleanOp(registerLine, pDecInsn.getB(), pDecInsn.getB())
+					&& (pDecInsn.getC() == 0 || pDecInsn.getC() == 1)) {
+				dstType.register = kRegTypeBoolean;
+			}
+		}
+		setRegisterType(registerLine, pDecInsn.getA(), dstType);
+	}
+
+	/*
+	 * Treat right-shifting as a narrowing conversion when possible.
+	 * 
+	 * For example, right-shifting an int 24 times results in a value that can
+	 * be treated as a byte.
+	 * 
+	 * Things get interesting when contemplating sign extension. Right- shifting
+	 * an integer by 16 yields a value that can be represented in a "short" but
+	 * not a "char", but an unsigned right shift by 16 yields a value that
+	 * belongs in a char rather than a short. (Consider what would happen if the
+	 * result of the shift were cast to a char or short and then cast back to an
+	 * int. If sign extension, or the lack thereof, causes a change in the
+	 * 32-bit representation, then the conversion was lossy.)
+	 * 
+	 * A signed right shift by 17 on an integer results in a short. An unsigned
+	 * right shfit by 17 on an integer results in a posshort, which can be
+	 * assigned to a short or a char.
+	 * 
+	 * An unsigned right shift on a short can actually expand the result into a
+	 * 32-bit integer. For example, 0xfffff123 >>> 8 becomes 0x00fffff1, which
+	 * can't be represented in anything smaller than an int.
+	 * 
+	 * javac does not generate code that takes advantage of this, but some of
+	 * the code optimizers do. It's generally a peephole optimization that
+	 * replaces a particular sequence, e.g. (bipush 24, ishr, i2b) is replaced
+	 * by (bipush 24, ishr). Knowing that shifting a short 8 times to the right
+	 * yields a byte is really more than we need to handle the code that's out
+	 * there, but support is not much more complex than just handling integer.
+	 * 
+	 * Right-shifting never yields a boolean value.
+	 * 
+	 * Returns the new register type.
+	 */
+	static RegType adjustForRightShift(RegisterLine registerLine, int reg,
+			int shiftCount, boolean isUnsignedShift) {
+		RegType srcType = getRegisterType(registerLine, reg);
+		RegType newType;
+
+		/* convert const derived types to their actual types */
+		srcType = RegType.constTypeToRegType(srcType.register);
+
+		/* no-op */
+		if (shiftCount == 0)
+			return srcType;
+
+		/* safe defaults */
+		if (isUnsignedShift)
+			newType = new RegType(kRegTypeInteger);
+		else
+			newType = srcType;
+
+		if (shiftCount >= 32) {
+			Log.i(LOG_TAG, String.format(
+					"Got unexpectedly large shift count %u", shiftCount));
+			/* fail? */
+			return newType;
+		}
+
+		switch (srcType.register) {
+		case kRegTypeInteger: /* 32-bit signed value */
+			if (isUnsignedShift) {
+				if (shiftCount > 24)
+					newType.register = kRegTypePosByte;
+				else if (shiftCount >= 16)
+					newType.register = kRegTypeChar;
+			} else {
+				if (shiftCount >= 24)
+					newType.register = kRegTypeByte;
+				else if (shiftCount >= 16)
+					newType.register = kRegTypeShort;
+			}
+			break;
+		case kRegTypeShort: /* 16-bit signed value */
+			if (isUnsignedShift) {
+				/* default (kRegTypeInteger) is correct */
+			} else {
+				if (shiftCount >= 8)
+					newType.register = kRegTypeByte;
+			}
+			break;
+		case kRegTypePosShort: /* 15-bit unsigned value */
+			if (shiftCount >= 8)
+				newType.register = kRegTypePosByte;
+			break;
+		case kRegTypeChar: /* 16-bit unsigned value */
+			if (shiftCount > 8)
+				newType.register = kRegTypePosByte;
+			break;
+		case kRegTypeByte: /* 8-bit signed value */
+			/* defaults (u=kRegTypeInteger / s=srcType) are correct */
+			break;
+		case kRegTypePosByte: /* 7-bit unsigned value */
+			/* always use newType=srcType */
+			newType = srcType;
+			break;
+		case kRegTypeZero: /* 1-bit unsigned value */
+		case kRegTypeOne:
+		case kRegTypeBoolean:
+			/* unnecessary? */
+			newType.register = kRegTypeZero;
+			break;
+		default:
+			/* long, double, references; shouldn't be here! */
+			assert (false);
+			break;
+		}
+
+		if (newType != srcType) {
+			Log.i(LOG_TAG, String.format("narrowing: %d(%d) --> %d to %d",
+					shiftCount, isUnsignedShift, srcType, newType));
+		} else {
+			Log.i(LOG_TAG, String.format("not narrowed: %d(%d) --> %d",
+					shiftCount, isUnsignedShift, srcType));
+		}
+		return newType;
+	}
+	
+	
+	
+}
