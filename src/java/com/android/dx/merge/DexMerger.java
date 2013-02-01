@@ -36,12 +36,12 @@ import com.android.dx.io.ClassData;
 import com.android.dx.io.ClassData.Method;
 import com.android.dx.io.ClassDef;
 import com.android.dx.io.Code;
-import com.android.dx.io.DexHasher;
 import com.android.dx.io.FieldId;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
 import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.io.dexbuffer.DexBufferArray;
+import com.android.dx.io.dexbuffer.DexBufferUtil;
 import com.android.dx.io.dexbuffer.Section;
 import com.android.dx.util.DexException;
 
@@ -308,7 +308,7 @@ public class DexMerger {
         contentsOut.writeMap(mapListOut);
 
         // generate and write the hashes
-        new DexHasher().writeHashes(dexOut);
+        DexBufferUtil.writeHashes(dexOut);
         tracker.incrementProgressBarProgress(1);
 
         return dexOut;
