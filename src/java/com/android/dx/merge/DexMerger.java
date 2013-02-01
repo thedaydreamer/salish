@@ -25,6 +25,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+import org.gnu.salish.progress.ProgressTracker;
+
 import android.util.Log;
 
 import com.android.dx.dex.SizeOf;
@@ -47,6 +49,11 @@ import com.android.dx.util.DexException;
  * Combine two dex files into one.
  */
 public class DexMerger {
+
+    /**
+     * Progress tracking. Must be non-null for now.
+     */
+    public ProgressTracker tracker;
 
     /**
      * Turn on and off logging for this class' activities.
@@ -229,67 +236,67 @@ public class DexMerger {
 
         String prefix = statusPrefix != null ? statusPrefix + ": " : null;
         if (prefix != null)
-            FinnrApp.updateProgressBarMessage(prefix + "strings");
+            tracker.updateProgressBarMessage(prefix + "strings");
 
         mergeStringIds();
 
         if (prefix != null) {
-            FinnrApp.incrementProgressBarProgress(1);
-            // FinnrApp.updateProgressBarMessage(prefix + "types");
+            tracker.incrementProgressBarProgress(1);
+            // tracker.updateProgressBarMessage(prefix + "types");
         }
 
         mergeTypeIds();
 
         if (prefix != null) {
-            FinnrApp.incrementProgressBarProgress(1);
-            // FinnrApp.updateProgressBarMessage(prefix + "type lists");
+            tracker.incrementProgressBarProgress(1);
+            // tracker.updateProgressBarMessage(prefix + "type lists");
         }
 
         mergeTypeLists();
         if (prefix != null) {
-            FinnrApp.incrementProgressBarProgress(1);
-            FinnrApp.updateProgressBarMessage(prefix + "methods");
+            tracker.incrementProgressBarProgress(1);
+            tracker.updateProgressBarMessage(prefix + "methods");
         }
 
         mergeProtoIds();
 
         if (prefix != null) {
-            FinnrApp.incrementProgressBarProgress(1);
-            FinnrApp.updateProgressBarMessage(prefix + "fields");
+            tracker.incrementProgressBarProgress(1);
+            tracker.updateProgressBarMessage(prefix + "fields");
         }
 
         mergeFieldIds();
 
         if (prefix != null) {
-            FinnrApp.incrementProgressBarProgress(1);
-            FinnrApp.updateProgressBarMessage(prefix + "classes"); // "method IDs");
+            tracker.incrementProgressBarProgress(1);
+            tracker.updateProgressBarMessage(prefix + "classes"); // "method IDs");
         }
 
         mergeMethodIds();
 
         if (prefix != null) {
-            FinnrApp.incrementProgressBarProgress(1);
-            // FinnrApp.updateProgressBarMessage(prefix + "annotations ");
+            tracker.incrementProgressBarProgress(1);
+            // tracker.updateProgressBarMessage(prefix + "annotations ");
         }
         mergeAnnotations();
 
         if (prefix != null) {
-            FinnrApp.incrementProgressBarProgress(1);
-            // FinnrApp.updateProgressBarMessage(prefix
+            tracker.incrementProgressBarProgress(1);
+            // tracker.updateProgressBarMessage(prefix
             // + "annotation sets/directories");
         }
 
         unionAnnotationSetsAndDirectories();
 
         if (prefix != null) {
-            FinnrApp.incrementProgressBarProgress(1);
-            // FinnrApp.updateProgressBarMessage(prefix + "class defs");
+            tracker.incrementProgressBarProgress(1);
+            // tracker.updateProgressBarMessage(prefix + "class defs");
         }
         mergeClassDefs();
 
         if (prefix != null) {
-            FinnrApp.incrementProgressBarProgress(1);
-            // FinnrApp.updateProgressBarMessage(prefix + "saving");
+            tracker.incrementProgressBarProgress(1);
+            // tracker.updateProgressBarMessage(prefix + "saving");
         }
 
         // write the header
@@ -302,7 +309,7 @@ public class DexMerger {
 
         // generate and write the hashes
         new DexHasher().writeHashes(dexOut);
-        FinnrApp.incrementProgressBarProgress(1);
+        tracker.incrementProgressBarProgress(1);
 
         return dexOut;
     }
@@ -323,8 +330,8 @@ public class DexMerger {
         if (wastedByteCount > +compactWasteThreshold) {
 
             if (statusPrefix != null) {
-                FinnrApp.incrementProgressBarProgress(1);
-                FinnrApp.updateProgressBarMessage(statusPrefix + ": optimizing");
+                tracker.incrementProgressBarProgress(1);
+                tracker.updateProgressBarMessage(statusPrefix + ": optimizing");
             }
 
             DexMerger compacter = new DexMerger(dexOut, new DexBufferArray(),
