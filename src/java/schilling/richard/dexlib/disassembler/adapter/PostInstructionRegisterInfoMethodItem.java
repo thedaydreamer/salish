@@ -37,73 +37,55 @@ import schilling.richard.dexlib.io.deserialize.ClassDataItem;
 import schilling.richard.io.IndentingWriter;
 
 public class PostInstructionRegisterInfoMethodItem extends MethodItem {
-	private final AnalyzedInstruction analyzedInstruction;
-	private final MethodAnalyzer methodAnalyzer;
+    private final AnalyzedInstruction analyzedInstruction;
+    private final MethodAnalyzer methodAnalyzer;
 
-	public PostInstructionRegisterInfoMethodItem(
-			AnalyzedInstruction analyzedInstruction,
-			MethodAnalyzer methodAnalyzer, int codeAddress) {
-		super(codeAddress);
-		this.analyzedInstruction = analyzedInstruction;
-		this.methodAnalyzer = methodAnalyzer;
-	}
+    public PostInstructionRegisterInfoMethodItem(
+            AnalyzedInstruction analyzedInstruction,
+            MethodAnalyzer methodAnalyzer, int codeAddress) {
+        super(codeAddress);
+        this.analyzedInstruction = analyzedInstruction;
+        this.methodAnalyzer = methodAnalyzer;
+    }
 
-	@Override
-	public double getSortOrder() {
-		return 100.1;
-	}
+    @Override
+    public double getSortOrder() {
+        return 100.1;
+    }
 
-	@Override
-	public boolean writeTo(IndentingWriter writer) throws IOException {
-		int registerInfo = FinnrApp.getApp().getPrefRegisterInfoSetAsBitmap();
-		int registerCount = analyzedInstruction.getRegisterCount();
-		BitSet registers = new BitSet(registerCount);
+    @Override
+    public boolean writeTo(IndentingWriter writer) throws IOException {
+        throw new UnsupportedOperationException("not in this version");
+    }
 
-		if ((registerInfo & ALL.asInt()) != 0) {
-			registers.set(0, registerCount);
-		} else {
-			if ((registerInfo & ALLPOST.asInt()) != 0) {
-				registers.set(0, registerCount);
-			} else if ((registerInfo & DEST.asInt()) != 0) {
-				addDestRegs(registers, registerCount);
-			}
-		}
+    private void addDestRegs(BitSet printPostRegister, int registerCount) {
+        for (int registerNum = 0; registerNum < registerCount; registerNum++) {
+            if (analyzedInstruction.getPreInstructionRegisterType(registerNum) != analyzedInstruction
+                    .getPostInstructionRegisterType(registerNum)) {
+                printPostRegister.set(registerNum);
+            }
+        }
+    }
 
-		return writeRegisterInfo(writer, registers);
-	}
+    private boolean writeRegisterInfo(IndentingWriter writer, BitSet registers)
+            throws IOException {
+        ClassDataItem.EncodedMethod encodedMethod = methodAnalyzer.getMethod();
 
-	private void addDestRegs(BitSet printPostRegister, int registerCount) {
-		for (int registerNum = 0; registerNum < registerCount; registerNum++) {
-			if (analyzedInstruction.getPreInstructionRegisterType(registerNum) != analyzedInstruction
-					.getPostInstructionRegisterType(registerNum)) {
-				printPostRegister.set(registerNum);
-			}
-		}
-	}
+        int registerNum = registers.nextSetBit(0);
+        if (registerNum < 0) {
+            return false;
+        }
 
-	private boolean writeRegisterInfo(IndentingWriter writer, BitSet registers)
-			throws IOException {
-		ClassDataItem.EncodedMethod encodedMethod = methodAnalyzer.getMethod();
-
-		int registerNum = registers.nextSetBit(0);
-		if (registerNum < 0) {
-			return false;
-		}
-
-		// FIXME uncomment
-		/*
-		 * writer.write('#'); for (; registerNum >= 0; registerNum = registers
-		 * .nextSetBit(registerNum + 1)) {
-		 * 
-		 * RegisterType registerType = analyzedInstruction
-		 * .getPostInstructionRegisterType(registerNum);
-		 * 
-		 * RegisterFormatter.writeTo(writer, encodedMethod.codeItem,
-		 * registerNum); writer.write('=');
-		 * 
-		 * if (registerType == null) { writer.write("null"); } else {
-		 * registerType.writeTo(writer); } writer.write(';'); }
-		 */
-		return true;
-	}
+        // FIXME uncomment
+        /*
+         * writer.write('#'); for (; registerNum >= 0; registerNum = registers
+         * .nextSetBit(registerNum + 1)) { RegisterType registerType =
+         * analyzedInstruction .getPostInstructionRegisterType(registerNum);
+         * RegisterFormatter.writeTo(writer, encodedMethod.codeItem,
+         * registerNum); writer.write('='); if (registerType == null) {
+         * writer.write("null"); } else { registerType.writeTo(writer); }
+         * writer.write(';'); }
+         */
+        return true;
+    }
 }

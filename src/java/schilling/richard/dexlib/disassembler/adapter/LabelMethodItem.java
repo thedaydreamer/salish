@@ -33,71 +33,73 @@ import java.io.IOException;
 import schilling.richard.io.IndentingWriter;
 
 public class LabelMethodItem extends MethodItem {
-	private final String labelPrefix;
-	private int labelSequence;
+    private final String labelPrefix;
+    private int labelSequence;
 
-	public LabelMethodItem(int codeAddress, String labelPrefix) {
-		super(codeAddress);
-		this.labelPrefix = labelPrefix;
-	}
+    public LabelMethodItem(int codeAddress, String labelPrefix) {
+        super(codeAddress);
+        this.labelPrefix = labelPrefix;
+    }
 
-	@Override
-	public double getSortOrder() {
-		return 0;
-	}
+    @Override
+    public double getSortOrder() {
+        return 0;
+    }
 
-	@Override
-	public int compareTo(MethodItem methodItem) {
-		int result = super.compareTo(methodItem);
+    @Override
+    public int compareTo(MethodItem methodItem) {
+        int result = super.compareTo(methodItem);
 
-		if (result == 0) {
-			if (methodItem instanceof LabelMethodItem) {
-				result = labelPrefix
-						.compareTo(((LabelMethodItem) methodItem).labelPrefix);
-			}
-		}
-		return result;
-	}
+        if (result == 0) {
+            if (methodItem instanceof LabelMethodItem) {
+                result = labelPrefix
+                        .compareTo(((LabelMethodItem) methodItem).labelPrefix);
+            }
+        }
+        return result;
+    }
 
-	@Override
-	public int hashCode() {
-		// force it to call equals when two labels are at the same address
-		return getCodeAddress();
-	}
+    @Override
+    public int hashCode() {
+        // force it to call equals when two labels are at the same address
+        return getCodeAddress();
+    }
 
-	@Override
-	public boolean equals(Object o) {
-		if (!(o instanceof LabelMethodItem)) {
-			return false;
-		}
-		return this.compareTo((MethodItem) o) == 0;
-	}
+    @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof LabelMethodItem)) {
+            return false;
+        }
+        return this.compareTo((MethodItem) o) == 0;
+    }
 
-	@Override
-	public boolean writeTo(IndentingWriter writer) throws IOException {
-		writer.write(':');
-		writer.write(labelPrefix);
-		if (FinnrApp.getApp().getPrefUseSequentialLabels()) {
-			writer.printUnsignedLongAsHex(labelSequence);
-		} else {
-			writer.printUnsignedLongAsHex(this.getLabelAddress());
-		}
-		return true;
-	}
+    @Override
+    public boolean writeTo(IndentingWriter writer) throws IOException {
+        writer.write(':');
+        writer.write(labelPrefix);
+        // TODO put useSequentialLabels in a preference somewhere.
+        boolean useSequentialLabels = true;
+        if (useSequentialLabels) {
+            writer.printUnsignedLongAsHex(labelSequence);
+        } else {
+            writer.printUnsignedLongAsHex(this.getLabelAddress());
+        }
+        return true;
+    }
 
-	public String getLabelPrefix() {
-		return labelPrefix;
-	}
+    public String getLabelPrefix() {
+        return labelPrefix;
+    }
 
-	public int getLabelAddress() {
-		return this.getCodeAddress();
-	}
+    public int getLabelAddress() {
+        return this.getCodeAddress();
+    }
 
-	public int getLabelSequence() {
-		return labelSequence;
-	}
+    public int getLabelSequence() {
+        return labelSequence;
+    }
 
-	public void setLabelSequence(int labelSequence) {
-		this.labelSequence = labelSequence;
-	}
+    public void setLabelSequence(int labelSequence) {
+        this.labelSequence = labelSequence;
+    }
 }

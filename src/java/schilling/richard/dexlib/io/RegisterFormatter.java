@@ -60,33 +60,7 @@ public class RegisterFormatter {
 	public static void writeRegisterRange(IndentingWriter writer,
 			CodeItem codeItem, int startRegister, int lastRegister)
 			throws IOException {
-		assert lastRegister >= startRegister;
-
-		if (!FinnrApp.getApp().getPrefNoParameterRegisters()) {
-			int parameterRegisterCount = codeItem.getParent().method
-					.getPrototype().getParameterRegisterCount()
-					+ (((codeItem.getParent().accessFlags & AccessFlags.STATIC
-							.getValue()) == 0) ? 1 : 0);
-			int registerCount = codeItem.getRegisterCount();
-
-			assert startRegister <= lastRegister;
-
-			if (startRegister >= registerCount - parameterRegisterCount) {
-				writer.write("{p");
-				writer.printSignedIntAsDec(startRegister
-						- (registerCount - parameterRegisterCount));
-				writer.write(" .. p");
-				writer.printSignedIntAsDec(lastRegister
-						- (registerCount - parameterRegisterCount));
-				writer.write('}');
-				return;
-			}
-		}
-		writer.write("{v");
-		writer.printSignedIntAsDec(startRegister);
-		writer.write(" .. v");
-		writer.printSignedIntAsDec(lastRegister);
-		writer.write('}');
+	    throw new UnsupportedOperationException("not in this version. See archive.");
 	}
 
 	/**
@@ -105,19 +79,6 @@ public class RegisterFormatter {
 	 */
 	public static void writeTo(IndentingWriter writer, CodeItem codeItem,
 			int register) throws IOException {
-		if (!FinnrApp.getApp().getPrefNoParameterRegisters()) {
-			int parameterRegisterCount = codeItem.getParent().method
-					.getPrototype().getParameterRegisterCount()
-					+ (((codeItem.getParent().accessFlags & AccessFlags.STATIC
-							.getValue()) == 0) ? 1 : 0);
-			int registerCount = codeItem.getRegisterCount();
-			if (register >= registerCount - parameterRegisterCount) {
-				writer.write('p');
-				writer.printSignedIntAsDec((register - (registerCount - parameterRegisterCount)));
-				return;
-			}
-		}
-		writer.write('v');
-		writer.printSignedIntAsDec(register);
+	    throw new UnsupportedOperationException("not in this version. See archive");
 	}
 }
