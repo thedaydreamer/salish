@@ -16,7 +16,7 @@
 
 package com.android.dx.io.instructions;
 
-import static schilling.richard.r3.app.DebugConstants.DO_LOG;
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 import android.util.Log;
 
 /**

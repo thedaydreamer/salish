@@ -4,7 +4,7 @@ package com.android.dx.io.opcode.verify;
 import static schilling.richard.dalvik.vm.oo.MethodType.METHOD_DIRECT;
 import static schilling.richard.dalvik.vm.oo.MethodType.METHOD_STATIC;
 import static schilling.richard.dalvik.vm.oo.MethodType.METHOD_VIRTUAL;
-import static schilling.richard.r3.app.DebugConstants.DO_LOG;
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 
 import java.util.List;
 

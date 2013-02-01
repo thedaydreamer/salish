@@ -17,7 +17,7 @@
 package com.android.dx.dex;
 
 import java.io.IOException;
-import static schilling.richard.r3.app.DebugConstants.*;
+import static org.gnu.salish.debug.util.DebugConstants.*;
 import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 

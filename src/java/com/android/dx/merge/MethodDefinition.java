@@ -12,7 +12,7 @@ import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeLongLo;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeRef;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeShort;
-import static schilling.richard.r3.app.DebugConstants.DO_LOG;
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 
 import java.util.LinkedList;
 import java.util.List;

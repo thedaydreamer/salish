@@ -16,7 +16,7 @@
 
 package com.android.dx.merge;
 
-import static schilling.richard.r3.app.DebugConstants.DO_LOG;
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 
 import java.io.File;
 import java.io.IOException;
@@ -25,7 +25,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-import schilling.richard.r3.app.FinnrApp;
+import org.gnu.salish.debug.util.FinnrApp;
 import android.util.Log;
 
 import com.android.dx.dex.SizeOf;

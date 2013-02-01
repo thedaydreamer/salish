@@ -2,7 +2,7 @@
 package com.android.dx.dex.file;
 
 import java.util.Iterator;
-import static schilling.richard.r3.app.DebugConstants.*;
+import static org.gnu.salish.debug.util.DebugConstants.*;
 import java.util.List;
 
 import android.util.Log;

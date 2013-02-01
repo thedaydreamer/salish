@@ -16,7 +16,7 @@
 
 package com.android.dx.io;
 
-import static schilling.richard.r3.app.DebugConstants.DO_LOG;
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;

@@ -1,7 +1,7 @@
 
 package com.android.dx.io.opcode.verify;
 
-import static schilling.richard.r3.app.DebugConstants.DO_LOG;
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 import schilling.richard.dalvik.vm.analysis.RegisterTypeSparseArray;
 import schilling.richard.dalvik.vm.oo.VerifyException;
 import android.util.Log;

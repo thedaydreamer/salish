@@ -16,7 +16,7 @@
 
 package com.android.dx.merge;
 
-import static schilling.richard.r3.app.DebugConstants.DO_LOG;
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 
 import java.io.IOException;
 import java.util.LinkedList;
@@ -25,7 +25,7 @@ import java.util.List;
 import schilling.richard.dalvik.vm.analysis.DexSwapVerify;
 import schilling.richard.dalvik.vm.oo.VerifyException;
 import schilling.richard.dexlib.inject.InjectException;
-import schilling.richard.r3.app.FinnrApp;
+import org.gnu.salish.debug.util.FinnrApp;
 import android.util.Log;
 import android.util.SparseIntArray;
 
