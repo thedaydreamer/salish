@@ -14,6 +14,7 @@ import com.android.dx.io.instructions.DecodedInstruction;
 import com.android.dx.merge.DexInjectMerger.ClassMethodPair;
 import com.android.dx.merge.MethodDefinition;
 
+@Deprecated
 public class InjectHttpUpdater extends BaseUpdater {
 
     private MethodId statusLineMethodId = null;

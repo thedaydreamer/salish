@@ -22,6 +22,7 @@ import com.android.dx.merge.MethodDefinition;
  * 
  * @author rschilling
  */
+@Deprecated
 public class InjectUpdater extends BaseUpdater {
 
     public InjectUpdater(List<ClassMethodPair> methodList) {

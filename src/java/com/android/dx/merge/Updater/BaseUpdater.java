@@ -12,6 +12,7 @@ import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.merge.DexInjectMerger.ClassMethodPair;
 import com.android.dx.merge.MethodDefinition;
 
+@Deprecated
 public abstract class BaseUpdater implements Comparable<BaseUpdater> {
     /**
      * If true HTTP response handling code will be injected.

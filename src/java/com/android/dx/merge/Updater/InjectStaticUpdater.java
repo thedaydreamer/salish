@@ -18,6 +18,7 @@ import com.android.dx.merge.MethodDefinition;
  * 
  * @author rschilling
  */
+@Deprecated
 public class InjectStaticUpdater extends InjectUpdater {
 
     public InjectStaticUpdater(List<ClassMethodPair> methodList) {
