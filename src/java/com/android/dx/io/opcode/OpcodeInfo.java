@@ -1,0 +1,1540 @@
+/*
+ * Copyright (C) 2011 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.android.dx.io.opcode;
+
+import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeUnknown;
+import static schilling.richard.r3.app.DebugConstants.DO_LOG;
+
+import java.util.Hashtable;
+
+import schilling.richard.dalvik.vm.InstructionList;
+import schilling.richard.dalvik.vm.analysis.RegisterType;
+import schilling.richard.dalvik.vm.analysis.RegisterTypeSparseArray;
+import schilling.richard.dalvik.vm.oo.VerifyException;
+import android.util.Log;
+
+import com.android.dx.io.IndexType;
+import com.android.dx.io.instructions.DecodedInstruction;
+import com.android.dx.io.opcode.format.InstructionCodec;
+import com.android.dx.io.opcode.info.*;
+import com.android.dx.io.opcode.regtype.DefaultRegisterTypes;
+import com.android.dx.io.opcode.regtype.RegisterTypeSetter;
+import com.android.dx.io.opcode.verify.DefaultVerifier;
+import com.android.dx.io.opcode.verify.OpcodeVerifier;
+import com.android.dx.merge.MethodDefinition;
+import com.android.dx.util.Hex;
+
+/**
+ * Information about each Dalvik opcode. This class binds each opcode with a
+ * format and an IndexType.
+ * <p>
+ * The payload opcodes extracted below are used to generate the classes in
+ * package com.android.dx.io.opcode.info. Those classes replace the use of the
+ * OpcodeInfo classes below. Don't write the classes by hand though. Generate
+ * them with awk. Here are the steps:
+ * <ol>
+ * <li>format each line so there are no line breaks (set the Eclipse formatter):
+ * public static final Info PACKED_SWITCH_PAYLOAD = new
+ * Info(Opcodes.PACKED_SWITCH_PAYLOAD, "packed-switch-payload",
+ * InstructionCodec.FORMAT_PACKED_SWITCH_PAYLOAD, IndexType.NONE);
+ * <li>copy all the lines just as they are to a file, say, classlist.dat.
+ * <li>run the following AWK program on the class file list with the following
+ * commmand: awk -f opcode-generator.awk opcodes.dat
+ * <ol>
+ * <p>
+ * here is the AWK program, which is also found in /scripts/java-awk. The script
+ * there generates additional javadoc in the output thougsh.
+ * 
+ * <pre>
+ * 
+ * # awk to generate classes
+ * # example statement:
+ * # public static final Info INVOKE_STATIC_JUMBO = new Info(Opcodes.INVOKE_STATIC_JUMBO, "invoke-static/jumbo", InstructionCodec.FORMAT_5RC, IndexType.METHOD_REF);
+ * #
+ * 
+ * BEGIN{
+ *         package="com.android.dx.io.opcode.info";
+ *         FS = "[ ()]"
+ * }
+ * {
+ *         if (NF > 0){
+ *         OUTFILE = ($5".java")
+ * 
+ *         print "File: ", OUTFILE;
+ *         print "package", (package ";") > OUTFILE;
+ *         print "" >> OUTFILE;
+ *         print "import schilling.richard.dalvik.vm.analysis.RegisterType;" >> OUTFILE;
+ *         print "import com.android.dx.io.IndexType;" >> OUTFILE;
+ *         print "import com.android.dx.io.opcode.format.InstructionCodec;" >> OUTFILE;
+ *         print "public final class", $5, "extends OpcodeInfo.Info{" >> OUTFILE;
+ *         print "     public", $5, "(){" >> OUTFILE;
+ *         print "          super(", $9, $10, $11, $12, ");" >> OUTFILE;
+ *         print "     }" >> OUTFILE;
+ *         print " " >> OUTFILE;
+ *         print "     @Override" >> OUTFILE;
+ *         print "     public RegisterType getRegisterType(RegisterReference ref) {" >> OUTFILE;
+ *         print "          throw new UnsupportedOperationException(\"TODO define, but call return super.getFormatRegisterTypeOrThrow(ref); first\");" >> OUTFILE;
+ *         print "     }" >> OUTFILE;
+ *         print "}" >> OUTFILE;
+ * 
+ *         close(OUTFILE);
+ *         }
+ * }
+ * 
+ * <pre>
+ */
+public final class OpcodeInfo {
+
+    // TODO create validation routine for Info. This way we can bind a
+    // validation routine to a specific opcode.
+
+    /*
+     * TODO: Merge at least most of the info from the Dops class into this one.
+     */
+
+    /** non-null; array containing all the information */
+    private static final Info[] INFO;
+
+    /**
+     * pseudo-opcode used for nonstandard formatted "instructions" (which are
+     * mostly not actually instructions, though they do appear in instruction
+     * lists). TODO: Retire the usage of this constant.
+     */
+    /*
+     * public static final Info SPECIAL_FORMAT = new
+     * Info(Opcodes.SPECIAL_FORMAT, "<special>", InstructionCodec.FORMAT_00X,
+     * IndexType.NONE); // TODO: These payload opcodes should be generated by
+     * opcode-gen. public static final Info PACKED_SWITCH_PAYLOAD = new Info(
+     * Opcodes.PACKED_SWITCH_PAYLOAD, "packed-switch-payload",
+     * InstructionCodec.FORMAT_PACKED_SWITCH_PAYLOAD, IndexType.NONE); public
+     * static final Info SPARSE_SWITCH_PAYLOAD = new Info(
+     * Opcodes.SPARSE_SWITCH_PAYLOAD, "sparse-switch-payload",
+     * InstructionCodec.FORMAT_SPARSE_SWITCH_PAYLOAD, IndexType.NONE); public
+     * static final Info FILL_ARRAY_DATA_PAYLOAD = new Info(
+     * Opcodes.FILL_ARRAY_DATA_PAYLOAD, "fill-array-data-payload",
+     * InstructionCodec.FORMAT_FILL_ARRAY_DATA_PAYLOAD, IndexType.NONE); //
+     * BEGIN(opcode-info-defs); GENERATED AUTOMATICALLY BY opcode-gen public
+     * static final Info NOP = new Info(Opcodes.NOP, "nop",
+     * InstructionCodec.FORMAT_10X, IndexType.NONE); public static final Info
+     * MOVE = new Info(Opcodes.MOVE, "move", InstructionCodec.FORMAT_12X,
+     * IndexType.NONE); public static final Info MOVE_FROM16 = new
+     * Info(Opcodes.MOVE_FROM16, "move/from16", InstructionCodec.FORMAT_22X,
+     * IndexType.NONE); public static final Info MOVE_16 = new
+     * Info(Opcodes.MOVE_16, "move/16", InstructionCodec.FORMAT_32X,
+     * IndexType.NONE); public static final Info MOVE_WIDE = new
+     * Info(Opcodes.MOVE_WIDE, "move-wide", InstructionCodec.FORMAT_12X,
+     * IndexType.NONE); public static final Info MOVE_WIDE_FROM16 = new Info(
+     * Opcodes.MOVE_WIDE_FROM16, "move-wide/from16",
+     * InstructionCodec.FORMAT_22X, IndexType.NONE); public static final Info
+     * MOVE_WIDE_16 = new Info(Opcodes.MOVE_WIDE_16, "move-wide/16",
+     * InstructionCodec.FORMAT_32X, IndexType.NONE); public static final Info
+     * MOVE_OBJECT = new Info(Opcodes.MOVE_OBJECT, "move-object",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * MOVE_OBJECT_FROM16 = new Info( Opcodes.MOVE_OBJECT_FROM16,
+     * "move-object/from16", InstructionCodec.FORMAT_22X, IndexType.NONE);
+     * public static final Info MOVE_OBJECT_16 = new
+     * Info(Opcodes.MOVE_OBJECT_16, "move-object/16",
+     * InstructionCodec.FORMAT_32X, IndexType.NONE); public static final Info
+     * MOVE_RESULT = new Info(Opcodes.MOVE_RESULT, "move-result",
+     * InstructionCodec.FORMAT_11X, IndexType.NONE); public static final Info
+     * MOVE_RESULT_WIDE = new Info( Opcodes.MOVE_RESULT_WIDE,
+     * "move-result-wide", InstructionCodec.FORMAT_11X, IndexType.NONE); public
+     * static final Info MOVE_RESULT_OBJECT = new Info(
+     * Opcodes.MOVE_RESULT_OBJECT, "move-result-object",
+     * InstructionCodec.FORMAT_11X, IndexType.NONE); public static final Info
+     * MOVE_EXCEPTION = new Info(Opcodes.MOVE_EXCEPTION, "move-exception",
+     * InstructionCodec.FORMAT_11X, IndexType.NONE); public static final Info
+     * RETURN_VOID = new Info(Opcodes.RETURN_VOID, "return-void",
+     * InstructionCodec.FORMAT_10X, IndexType.NONE); public static final Info
+     * RETURN = new Info(Opcodes.RETURN, "return", InstructionCodec.FORMAT_11X,
+     * IndexType.NONE); public static final Info RETURN_WIDE = new
+     * Info(Opcodes.RETURN_WIDE, "return-wide", InstructionCodec.FORMAT_11X,
+     * IndexType.NONE); public static final Info RETURN_OBJECT = new
+     * Info(Opcodes.RETURN_OBJECT, "return-object", InstructionCodec.FORMAT_11X,
+     * IndexType.NONE); public static final Info CONST_4 = new
+     * Info(Opcodes.CONST_4, "const/4", InstructionCodec.FORMAT_11N,
+     * IndexType.NONE); public static final Info CONST_16 = new
+     * Info(Opcodes.CONST_16, "const/16", InstructionCodec.FORMAT_21S,
+     * IndexType.NONE); public static final Info CONST = new Info(Opcodes.CONST,
+     * "const", InstructionCodec.FORMAT_31I, IndexType.NONE); public static
+     * final Info CONST_HIGH16 = new Info(Opcodes.CONST_HIGH16, "const/high16",
+     * InstructionCodec.FORMAT_21H, IndexType.NONE); public static final Info
+     * CONST_WIDE_16 = new Info(Opcodes.CONST_WIDE_16, "const-wide/16",
+     * InstructionCodec.FORMAT_21S, IndexType.NONE); public static final Info
+     * CONST_WIDE_32 = new Info(Opcodes.CONST_WIDE_32, "const-wide/32",
+     * InstructionCodec.FORMAT_31I, IndexType.NONE); public static final Info
+     * CONST_WIDE = new Info(Opcodes.CONST_WIDE, "const-wide",
+     * InstructionCodec.FORMAT_51L, IndexType.NONE); public static final Info
+     * CONST_WIDE_HIGH16 = new Info( Opcodes.CONST_WIDE_HIGH16,
+     * "const-wide/high16", InstructionCodec.FORMAT_21H, IndexType.NONE); public
+     * static final Info CONST_STRING = new Info(Opcodes.CONST_STRING,
+     * "const-string", InstructionCodec.FORMAT_21C, IndexType.STRING_REF);
+     * public static final Info CONST_STRING_JUMBO = new Info(
+     * Opcodes.CONST_STRING_JUMBO, "const-string/jumbo",
+     * InstructionCodec.FORMAT_31C, IndexType.STRING_REF); public static final
+     * Info CONST_CLASS = new Info(Opcodes.CONST_CLASS, "const-class",
+     * InstructionCodec.FORMAT_21C, IndexType.TYPE_REF); public static final
+     * Info MONITOR_ENTER = new Info(Opcodes.MONITOR_ENTER, "monitor-enter",
+     * InstructionCodec.FORMAT_11X, IndexType.NONE); public static final Info
+     * MONITOR_EXIT = new Info(Opcodes.MONITOR_EXIT, "monitor-exit",
+     * InstructionCodec.FORMAT_11X, IndexType.NONE); public static final Info
+     * CHECK_CAST = new Info(Opcodes.CHECK_CAST, "check-cast",
+     * InstructionCodec.FORMAT_21C, IndexType.TYPE_REF); public static final
+     * Info INSTANCE_OF = new Info(Opcodes.INSTANCE_OF, "instance-of",
+     * InstructionCodec.FORMAT_22C, IndexType.TYPE_REF); public static final
+     * Info ARRAY_LENGTH = new Info(Opcodes.ARRAY_LENGTH, "array-length",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * NEW_INSTANCE = new Info(Opcodes.NEW_INSTANCE, "new-instance",
+     * InstructionCodec.FORMAT_21C, IndexType.TYPE_REF); public static final
+     * Info NEW_ARRAY = new Info(Opcodes.NEW_ARRAY, "new-array",
+     * InstructionCodec.FORMAT_22C, IndexType.TYPE_REF); public static final
+     * Info FILLED_NEW_ARRAY = new Info( Opcodes.FILLED_NEW_ARRAY,
+     * "filled-new-array", InstructionCodec.FORMAT_35C, IndexType.TYPE_REF);
+     * public static final Info FILLED_NEW_ARRAY_RANGE = new Info(
+     * Opcodes.FILLED_NEW_ARRAY_RANGE, "filled-new-array/range",
+     * InstructionCodec.FORMAT_3RC, IndexType.TYPE_REF); public static final
+     * Info FILL_ARRAY_DATA = new Info( Opcodes.FILL_ARRAY_DATA,
+     * "fill-array-data", InstructionCodec.FORMAT_31T, IndexType.NONE); public
+     * static final Info THROW = new Info(Opcodes.THROW, "throw",
+     * InstructionCodec.FORMAT_11X, IndexType.NONE); public static final Info
+     * GOTO = new Info(Opcodes.GOTO, "goto", InstructionCodec.FORMAT_10T,
+     * IndexType.NONE); public static final Info GOTO_16 = new
+     * Info(Opcodes.GOTO_16, "goto/16", InstructionCodec.FORMAT_20T,
+     * IndexType.NONE); public static final Info GOTO_32 = new
+     * Info(Opcodes.GOTO_32, "goto/32", InstructionCodec.FORMAT_30T,
+     * IndexType.NONE); public static final Info PACKED_SWITCH = new
+     * Info(Opcodes.PACKED_SWITCH, "packed-switch", InstructionCodec.FORMAT_31T,
+     * IndexType.NONE); public static final Info SPARSE_SWITCH = new
+     * Info(Opcodes.SPARSE_SWITCH, "sparse-switch", InstructionCodec.FORMAT_31T,
+     * IndexType.NONE); public static final Info CMPL_FLOAT = new
+     * Info(Opcodes.CMPL_FLOAT, "cmpl-float", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info CMPG_FLOAT = new
+     * Info(Opcodes.CMPG_FLOAT, "cmpg-float", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info CMPL_DOUBLE = new
+     * Info(Opcodes.CMPL_DOUBLE, "cmpl-double", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info CMPG_DOUBLE = new
+     * Info(Opcodes.CMPG_DOUBLE, "cmpg-double", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info CMP_LONG = new
+     * Info(Opcodes.CMP_LONG, "cmp-long", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info IF_EQ = new Info(Opcodes.IF_EQ,
+     * "if-eq", InstructionCodec.FORMAT_22T, IndexType.NONE); public static
+     * final Info IF_NE = new Info(Opcodes.IF_NE, "if-ne",
+     * InstructionCodec.FORMAT_22T, IndexType.NONE); public static final Info
+     * IF_LT = new Info(Opcodes.IF_LT, "if-lt", InstructionCodec.FORMAT_22T,
+     * IndexType.NONE); public static final Info IF_GE = new Info(Opcodes.IF_GE,
+     * "if-ge", InstructionCodec.FORMAT_22T, IndexType.NONE); public static
+     * final Info IF_GT = new Info(Opcodes.IF_GT, "if-gt",
+     * InstructionCodec.FORMAT_22T, IndexType.NONE); public static final Info
+     * IF_LE = new Info(Opcodes.IF_LE, "if-le", InstructionCodec.FORMAT_22T,
+     * IndexType.NONE); public static final Info IF_EQZ = new
+     * Info(Opcodes.IF_EQZ, "if-eqz", InstructionCodec.FORMAT_21T,
+     * IndexType.NONE); public static final Info IF_NEZ = new
+     * Info(Opcodes.IF_NEZ, "if-nez", InstructionCodec.FORMAT_21T,
+     * IndexType.NONE); public static final Info IF_LTZ = new
+     * Info(Opcodes.IF_LTZ, "if-ltz", InstructionCodec.FORMAT_21T,
+     * IndexType.NONE); public static final Info IF_GEZ = new
+     * Info(Opcodes.IF_GEZ, "if-gez", InstructionCodec.FORMAT_21T,
+     * IndexType.NONE); public static final Info IF_GTZ = new
+     * Info(Opcodes.IF_GTZ, "if-gtz", InstructionCodec.FORMAT_21T,
+     * IndexType.NONE); public static final Info IF_LEZ = new
+     * Info(Opcodes.IF_LEZ, "if-lez", InstructionCodec.FORMAT_21T,
+     * IndexType.NONE); public static final Info AGET = new Info(Opcodes.AGET,
+     * "aget", InstructionCodec.FORMAT_23X, IndexType.NONE); public static final
+     * Info AGET_WIDE = new Info(Opcodes.AGET_WIDE, "aget-wide",
+     * InstructionCodec.FORMAT_23X, IndexType.NONE); public static final Info
+     * AGET_OBJECT = new Info(Opcodes.AGET_OBJECT, "aget-object",
+     * InstructionCodec.FORMAT_23X, IndexType.NONE); public static final Info
+     * AGET_BOOLEAN = new Info(Opcodes.AGET_BOOLEAN, "aget-boolean",
+     * InstructionCodec.FORMAT_23X, IndexType.NONE); public static final Info
+     * AGET_BYTE = new Info(Opcodes.AGET_BYTE, "aget-byte",
+     * InstructionCodec.FORMAT_23X, IndexType.NONE); public static final Info
+     * AGET_CHAR = new Info(Opcodes.AGET_CHAR, "aget-char",
+     * InstructionCodec.FORMAT_23X, IndexType.NONE); public static final Info
+     * AGET_SHORT = new Info(Opcodes.AGET_SHORT, "aget-short",
+     * InstructionCodec.FORMAT_23X, IndexType.NONE); public static final Info
+     * APUT = new Info(Opcodes.APUT, "aput", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info APUT_WIDE = new
+     * Info(Opcodes.APUT_WIDE, "aput-wide", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info APUT_OBJECT = new
+     * Info(Opcodes.APUT_OBJECT, "aput-object", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info APUT_BOOLEAN = new
+     * Info(Opcodes.APUT_BOOLEAN, "aput-boolean", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info APUT_BYTE = new
+     * Info(Opcodes.APUT_BYTE, "aput-byte", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info APUT_CHAR = new
+     * Info(Opcodes.APUT_CHAR, "aput-char", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info APUT_SHORT = new
+     * Info(Opcodes.APUT_SHORT, "aput-short", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info IGET = new Info(Opcodes.IGET,
+     * "iget", InstructionCodec.FORMAT_22C, IndexType.FIELD_REF); public static
+     * final Info IGET_WIDE = new Info(Opcodes.IGET_WIDE, "iget-wide",
+     * InstructionCodec.FORMAT_22C, IndexType.FIELD_REF); public static final
+     * Info IGET_OBJECT = new Info(Opcodes.IGET_OBJECT, "iget-object",
+     * InstructionCodec.FORMAT_22C, IndexType.FIELD_REF); public static final
+     * Info IGET_BOOLEAN = new Info(Opcodes.IGET_BOOLEAN, "iget-boolean",
+     * InstructionCodec.FORMAT_22C, IndexType.FIELD_REF); public static final
+     * Info IGET_BYTE = new Info(Opcodes.IGET_BYTE, "iget-byte",
+     * InstructionCodec.FORMAT_22C, IndexType.FIELD_REF); public static final
+     * Info IGET_CHAR = new Info(Opcodes.IGET_CHAR, "iget-char",
+     * InstructionCodec.FORMAT_22C, IndexType.FIELD_REF); public static final
+     * Info IGET_SHORT = new Info(Opcodes.IGET_SHORT, "iget-short",
+     * InstructionCodec.FORMAT_22C, IndexType.FIELD_REF); public static final
+     * Info IPUT = new Info(Opcodes.IPUT, "iput", InstructionCodec.FORMAT_22C,
+     * IndexType.FIELD_REF); public static final Info IPUT_WIDE = new
+     * Info(Opcodes.IPUT_WIDE, "iput-wide", InstructionCodec.FORMAT_22C,
+     * IndexType.FIELD_REF); public static final Info IPUT_OBJECT = new
+     * Info(Opcodes.IPUT_OBJECT, "iput-object", InstructionCodec.FORMAT_22C,
+     * IndexType.FIELD_REF); public static final Info IPUT_BOOLEAN = new
+     * Info(Opcodes.IPUT_BOOLEAN, "iput-boolean", InstructionCodec.FORMAT_22C,
+     * IndexType.FIELD_REF); public static final Info IPUT_BYTE = new
+     * Info(Opcodes.IPUT_BYTE, "iput-byte", InstructionCodec.FORMAT_22C,
+     * IndexType.FIELD_REF); public static final Info IPUT_CHAR = new
+     * Info(Opcodes.IPUT_CHAR, "iput-char", InstructionCodec.FORMAT_22C,
+     * IndexType.FIELD_REF); public static final Info IPUT_SHORT = new
+     * Info(Opcodes.IPUT_SHORT, "iput-short", InstructionCodec.FORMAT_22C,
+     * IndexType.FIELD_REF); public static final Info SGET = new
+     * Info(Opcodes.SGET, "sget", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SGET_WIDE = new
+     * Info(Opcodes.SGET_WIDE, "sget-wide", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SGET_OBJECT = new
+     * Info(Opcodes.SGET_OBJECT, "sget-object", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SGET_BOOLEAN = new
+     * Info(Opcodes.SGET_BOOLEAN, "sget-boolean", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SGET_BYTE = new
+     * Info(Opcodes.SGET_BYTE, "sget-byte", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SGET_CHAR = new
+     * Info(Opcodes.SGET_CHAR, "sget-char", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SGET_SHORT = new
+     * Info(Opcodes.SGET_SHORT, "sget-short", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SPUT = new
+     * Info(Opcodes.SPUT, "sput", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SPUT_WIDE = new
+     * Info(Opcodes.SPUT_WIDE, "sput-wide", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SPUT_OBJECT = new
+     * Info(Opcodes.SPUT_OBJECT, "sput-object", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SPUT_BOOLEAN = new
+     * Info(Opcodes.SPUT_BOOLEAN, "sput-boolean", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SPUT_BYTE = new
+     * Info(Opcodes.SPUT_BYTE, "sput-byte", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SPUT_CHAR = new
+     * Info(Opcodes.SPUT_CHAR, "sput-char", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info SPUT_SHORT = new
+     * Info(Opcodes.SPUT_SHORT, "sput-short", InstructionCodec.FORMAT_21C,
+     * IndexType.FIELD_REF); public static final Info INVOKE_VIRTUAL = new
+     * Info(Opcodes.INVOKE_VIRTUAL, "invoke-virtual",
+     * InstructionCodec.FORMAT_35C, IndexType.METHOD_REF); public static final
+     * Info INVOKE_SUPER = new Info(Opcodes.INVOKE_SUPER, "invoke-super",
+     * InstructionCodec.FORMAT_35C, IndexType.METHOD_REF); public static final
+     * Info INVOKE_DIRECT = new Info(Opcodes.INVOKE_DIRECT, "invoke-direct",
+     * InstructionCodec.FORMAT_35C, IndexType.METHOD_REF); public static final
+     * Info INVOKE_STATIC = new Info(Opcodes.INVOKE_STATIC, "invoke-static",
+     * InstructionCodec.FORMAT_35C, IndexType.METHOD_REF); public static final
+     * Info INVOKE_INTERFACE = new Info( Opcodes.INVOKE_INTERFACE,
+     * "invoke-interface", InstructionCodec.FORMAT_35C, IndexType.METHOD_REF);
+     * public static final Info INVOKE_VIRTUAL_RANGE = new Info(
+     * Opcodes.INVOKE_VIRTUAL_RANGE, "invoke-virtual/range",
+     * InstructionCodec.FORMAT_3RC, IndexType.METHOD_REF); public static final
+     * Info INVOKE_SUPER_RANGE = new Info( Opcodes.INVOKE_SUPER_RANGE,
+     * "invoke-super/range", InstructionCodec.FORMAT_3RC, IndexType.METHOD_REF);
+     * public static final Info INVOKE_DIRECT_RANGE = new Info(
+     * Opcodes.INVOKE_DIRECT_RANGE, "invoke-direct/range",
+     * InstructionCodec.FORMAT_3RC, IndexType.METHOD_REF); public static final
+     * Info INVOKE_STATIC_RANGE = new Info( Opcodes.INVOKE_STATIC_RANGE,
+     * "invoke-static/range", InstructionCodec.FORMAT_3RC,
+     * IndexType.METHOD_REF); public static final Info INVOKE_INTERFACE_RANGE =
+     * new Info( Opcodes.INVOKE_INTERFACE_RANGE, "invoke-interface/range",
+     * InstructionCodec.FORMAT_3RC, IndexType.METHOD_REF); public static final
+     * Info NEG_INT = new Info(Opcodes.NEG_INT, "neg-int",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * NOT_INT = new Info(Opcodes.NOT_INT, "not-int",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * NEG_LONG = new Info(Opcodes.NEG_LONG, "neg-long",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * NOT_LONG = new Info(Opcodes.NOT_LONG, "not-long",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * NEG_FLOAT = new Info(Opcodes.NEG_FLOAT, "neg-float",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * NEG_DOUBLE = new Info(Opcodes.NEG_DOUBLE, "neg-double",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * INT_TO_LONG = new Info(Opcodes.INT_TO_LONG, "int-to-long",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * INT_TO_FLOAT = new Info(Opcodes.INT_TO_FLOAT, "int-to-float",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * INT_TO_DOUBLE = new Info(Opcodes.INT_TO_DOUBLE, "int-to-double",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * LONG_TO_INT = new Info(Opcodes.LONG_TO_INT, "long-to-int",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * LONG_TO_FLOAT = new Info(Opcodes.LONG_TO_FLOAT, "long-to-float",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * LONG_TO_DOUBLE = new Info(Opcodes.LONG_TO_DOUBLE, "long-to-double",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * FLOAT_TO_INT = new Info(Opcodes.FLOAT_TO_INT, "float-to-int",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * FLOAT_TO_LONG = new Info(Opcodes.FLOAT_TO_LONG, "float-to-long",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * FLOAT_TO_DOUBLE = new Info( Opcodes.FLOAT_TO_DOUBLE, "float-to-double",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * DOUBLE_TO_INT = new Info(Opcodes.DOUBLE_TO_INT, "double-to-int",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * DOUBLE_TO_LONG = new Info(Opcodes.DOUBLE_TO_LONG, "double-to-long",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * DOUBLE_TO_FLOAT = new Info( Opcodes.DOUBLE_TO_FLOAT, "double-to-float",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * INT_TO_BYTE = new Info(Opcodes.INT_TO_BYTE, "int-to-byte",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * INT_TO_CHAR = new Info(Opcodes.INT_TO_CHAR, "int-to-char",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * INT_TO_SHORT = new Info(Opcodes.INT_TO_SHORT, "int-to-short",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * ADD_INT = new Info(Opcodes.ADD_INT, "add-int",
+     * InstructionCodec.FORMAT_23X, IndexType.NONE); public static final Info
+     * SUB_INT = new Info(Opcodes.SUB_INT, "sub-int",
+     * InstructionCodec.FORMAT_23X, IndexType.NONE); public static final Info
+     * MUL_INT = new Info(Opcodes.MUL_INT, "mul-int",
+     * InstructionCodec.FORMAT_23X, IndexType.NONE); public static final Info
+     * DIV_INT = new Info(Opcodes.DIV_INT, "div-int",
+     * InstructionCodec.FORMAT_23X, IndexType.NONE); public static final Info
+     * REM_INT = new Info(Opcodes.REM_INT, "rem-int",
+     * InstructionCodec.FORMAT_23X, IndexType.NONE); public static final Info
+     * AND_INT = new Info(Opcodes.AND_INT, "and-int",
+     * InstructionCodec.FORMAT_23X, IndexType.NONE); public static final Info
+     * OR_INT = new Info(Opcodes.OR_INT, "or-int", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info XOR_INT = new
+     * Info(Opcodes.XOR_INT, "xor-int", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info SHL_INT = new
+     * Info(Opcodes.SHL_INT, "shl-int", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info SHR_INT = new
+     * Info(Opcodes.SHR_INT, "shr-int", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info USHR_INT = new
+     * Info(Opcodes.USHR_INT, "ushr-int", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info ADD_LONG = new
+     * Info(Opcodes.ADD_LONG, "add-long", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info SUB_LONG = new
+     * Info(Opcodes.SUB_LONG, "sub-long", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info MUL_LONG = new
+     * Info(Opcodes.MUL_LONG, "mul-long", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info DIV_LONG = new
+     * Info(Opcodes.DIV_LONG, "div-long", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info REM_LONG = new
+     * Info(Opcodes.REM_LONG, "rem-long", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info AND_LONG = new
+     * Info(Opcodes.AND_LONG, "and-long", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info OR_LONG = new
+     * Info(Opcodes.OR_LONG, "or-long", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info XOR_LONG = new
+     * Info(Opcodes.XOR_LONG, "xor-long", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info SHL_LONG = new
+     * Info(Opcodes.SHL_LONG, "shl-long", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info SHR_LONG = new
+     * Info(Opcodes.SHR_LONG, "shr-long", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info USHR_LONG = new
+     * Info(Opcodes.USHR_LONG, "ushr-long", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info ADD_FLOAT = new
+     * Info(Opcodes.ADD_FLOAT, "add-float", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info SUB_FLOAT = new
+     * Info(Opcodes.SUB_FLOAT, "sub-float", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info MUL_FLOAT = new
+     * Info(Opcodes.MUL_FLOAT, "mul-float", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info DIV_FLOAT = new
+     * Info(Opcodes.DIV_FLOAT, "div-float", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info REM_FLOAT = new
+     * Info(Opcodes.REM_FLOAT, "rem-float", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info ADD_DOUBLE = new
+     * Info(Opcodes.ADD_DOUBLE, "add-double", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info SUB_DOUBLE = new
+     * Info(Opcodes.SUB_DOUBLE, "sub-double", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info MUL_DOUBLE = new
+     * Info(Opcodes.MUL_DOUBLE, "mul-double", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info DIV_DOUBLE = new
+     * Info(Opcodes.DIV_DOUBLE, "div-double", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info REM_DOUBLE = new
+     * Info(Opcodes.REM_DOUBLE, "rem-double", InstructionCodec.FORMAT_23X,
+     * IndexType.NONE); public static final Info ADD_INT_2ADDR = new
+     * Info(Opcodes.ADD_INT_2ADDR, "add-int/2addr", InstructionCodec.FORMAT_12X,
+     * IndexType.NONE); public static final Info SUB_INT_2ADDR = new
+     * Info(Opcodes.SUB_INT_2ADDR, "sub-int/2addr", InstructionCodec.FORMAT_12X,
+     * IndexType.NONE); public static final Info MUL_INT_2ADDR = new
+     * Info(Opcodes.MUL_INT_2ADDR, "mul-int/2addr", InstructionCodec.FORMAT_12X,
+     * IndexType.NONE); public static final Info DIV_INT_2ADDR = new
+     * Info(Opcodes.DIV_INT_2ADDR, "div-int/2addr", InstructionCodec.FORMAT_12X,
+     * IndexType.NONE); public static final Info REM_INT_2ADDR = new
+     * Info(Opcodes.REM_INT_2ADDR, "rem-int/2addr", InstructionCodec.FORMAT_12X,
+     * IndexType.NONE); public static final Info AND_INT_2ADDR = new
+     * Info(Opcodes.AND_INT_2ADDR, "and-int/2addr", InstructionCodec.FORMAT_12X,
+     * IndexType.NONE); public static final Info OR_INT_2ADDR = new
+     * Info(Opcodes.OR_INT_2ADDR, "or-int/2addr", InstructionCodec.FORMAT_12X,
+     * IndexType.NONE); public static final Info XOR_INT_2ADDR = new
+     * Info(Opcodes.XOR_INT_2ADDR, "xor-int/2addr", InstructionCodec.FORMAT_12X,
+     * IndexType.NONE); public static final Info SHL_INT_2ADDR = new
+     * Info(Opcodes.SHL_INT_2ADDR, "shl-int/2addr", InstructionCodec.FORMAT_12X,
+     * IndexType.NONE); public static final Info SHR_INT_2ADDR = new
+     * Info(Opcodes.SHR_INT_2ADDR, "shr-int/2addr", InstructionCodec.FORMAT_12X,
+     * IndexType.NONE); public static final Info USHR_INT_2ADDR = new
+     * Info(Opcodes.USHR_INT_2ADDR, "ushr-int/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * ADD_LONG_2ADDR = new Info(Opcodes.ADD_LONG_2ADDR, "add-long/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * SUB_LONG_2ADDR = new Info(Opcodes.SUB_LONG_2ADDR, "sub-long/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * MUL_LONG_2ADDR = new Info(Opcodes.MUL_LONG_2ADDR, "mul-long/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * DIV_LONG_2ADDR = new Info(Opcodes.DIV_LONG_2ADDR, "div-long/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * REM_LONG_2ADDR = new Info(Opcodes.REM_LONG_2ADDR, "rem-long/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * AND_LONG_2ADDR = new Info(Opcodes.AND_LONG_2ADDR, "and-long/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * OR_LONG_2ADDR = new Info(Opcodes.OR_LONG_2ADDR, "or-long/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * XOR_LONG_2ADDR = new Info(Opcodes.XOR_LONG_2ADDR, "xor-long/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * SHL_LONG_2ADDR = new Info(Opcodes.SHL_LONG_2ADDR, "shl-long/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * SHR_LONG_2ADDR = new Info(Opcodes.SHR_LONG_2ADDR, "shr-long/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * USHR_LONG_2ADDR = new Info( Opcodes.USHR_LONG_2ADDR, "ushr-long/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * ADD_FLOAT_2ADDR = new Info( Opcodes.ADD_FLOAT_2ADDR, "add-float/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * SUB_FLOAT_2ADDR = new Info( Opcodes.SUB_FLOAT_2ADDR, "sub-float/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * MUL_FLOAT_2ADDR = new Info( Opcodes.MUL_FLOAT_2ADDR, "mul-float/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * DIV_FLOAT_2ADDR = new Info( Opcodes.DIV_FLOAT_2ADDR, "div-float/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * REM_FLOAT_2ADDR = new Info( Opcodes.REM_FLOAT_2ADDR, "rem-float/2addr",
+     * InstructionCodec.FORMAT_12X, IndexType.NONE); public static final Info
+     * ADD_DOUBLE_2ADDR = new Info( Opcodes.ADD_DOUBLE_2ADDR,
+     * "add-double/2addr", InstructionCodec.FORMAT_12X, IndexType.NONE); public
+     * static final Info SUB_DOUBLE_2ADDR = new Info( Opcodes.SUB_DOUBLE_2ADDR,
+     * "sub-double/2addr", InstructionCodec.FORMAT_12X, IndexType.NONE); public
+     * static final Info MUL_DOUBLE_2ADDR = new Info( Opcodes.MUL_DOUBLE_2ADDR,
+     * "mul-double/2addr", InstructionCodec.FORMAT_12X, IndexType.NONE); public
+     * static final Info DIV_DOUBLE_2ADDR = new Info( Opcodes.DIV_DOUBLE_2ADDR,
+     * "div-double/2addr", InstructionCodec.FORMAT_12X, IndexType.NONE); public
+     * static final Info REM_DOUBLE_2ADDR = new Info( Opcodes.REM_DOUBLE_2ADDR,
+     * "rem-double/2addr", InstructionCodec.FORMAT_12X, IndexType.NONE); public
+     * static final Info ADD_INT_LIT16 = new Info(Opcodes.ADD_INT_LIT16,
+     * "add-int/lit16", InstructionCodec.FORMAT_22S, IndexType.NONE); public
+     * static final Info RSUB_INT = new Info(Opcodes.RSUB_INT, "rsub-int",
+     * InstructionCodec.FORMAT_22S, IndexType.NONE); public static final Info
+     * MUL_INT_LIT16 = new Info(Opcodes.MUL_INT_LIT16, "mul-int/lit16",
+     * InstructionCodec.FORMAT_22S, IndexType.NONE); public static final Info
+     * DIV_INT_LIT16 = new Info(Opcodes.DIV_INT_LIT16, "div-int/lit16",
+     * InstructionCodec.FORMAT_22S, IndexType.NONE); public static final Info
+     * REM_INT_LIT16 = new Info(Opcodes.REM_INT_LIT16, "rem-int/lit16",
+     * InstructionCodec.FORMAT_22S, IndexType.NONE); public static final Info
+     * AND_INT_LIT16 = new Info(Opcodes.AND_INT_LIT16, "and-int/lit16",
+     * InstructionCodec.FORMAT_22S, IndexType.NONE); public static final Info
+     * OR_INT_LIT16 = new Info(Opcodes.OR_INT_LIT16, "or-int/lit16",
+     * InstructionCodec.FORMAT_22S, IndexType.NONE); public static final Info
+     * XOR_INT_LIT16 = new Info(Opcodes.XOR_INT_LIT16, "xor-int/lit16",
+     * InstructionCodec.FORMAT_22S, IndexType.NONE); public static final Info
+     * ADD_INT_LIT8 = new Info(Opcodes.ADD_INT_LIT8, "add-int/lit8",
+     * InstructionCodec.FORMAT_22B, IndexType.NONE); public static final Info
+     * RSUB_INT_LIT8 = new Info(Opcodes.RSUB_INT_LIT8, "rsub-int/lit8",
+     * InstructionCodec.FORMAT_22B, IndexType.NONE); public static final Info
+     * MUL_INT_LIT8 = new Info(Opcodes.MUL_INT_LIT8, "mul-int/lit8",
+     * InstructionCodec.FORMAT_22B, IndexType.NONE); public static final Info
+     * DIV_INT_LIT8 = new Info(Opcodes.DIV_INT_LIT8, "div-int/lit8",
+     * InstructionCodec.FORMAT_22B, IndexType.NONE); public static final Info
+     * REM_INT_LIT8 = new Info(Opcodes.REM_INT_LIT8, "rem-int/lit8",
+     * InstructionCodec.FORMAT_22B, IndexType.NONE); public static final Info
+     * AND_INT_LIT8 = new Info(Opcodes.AND_INT_LIT8, "and-int/lit8",
+     * InstructionCodec.FORMAT_22B, IndexType.NONE); public static final Info
+     * OR_INT_LIT8 = new Info(Opcodes.OR_INT_LIT8, "or-int/lit8",
+     * InstructionCodec.FORMAT_22B, IndexType.NONE); public static final Info
+     * XOR_INT_LIT8 = new Info(Opcodes.XOR_INT_LIT8, "xor-int/lit8",
+     * InstructionCodec.FORMAT_22B, IndexType.NONE); public static final Info
+     * SHL_INT_LIT8 = new Info(Opcodes.SHL_INT_LIT8, "shl-int/lit8",
+     * InstructionCodec.FORMAT_22B, IndexType.NONE); public static final Info
+     * SHR_INT_LIT8 = new Info(Opcodes.SHR_INT_LIT8, "shr-int/lit8",
+     * InstructionCodec.FORMAT_22B, IndexType.NONE); public static final Info
+     * USHR_INT_LIT8 = new Info(Opcodes.USHR_INT_LIT8, "ushr-int/lit8",
+     * InstructionCodec.FORMAT_22B, IndexType.NONE); public static final Info
+     * CONST_CLASS_JUMBO = new Info( Opcodes.CONST_CLASS_JUMBO,
+     * "const-class/jumbo", InstructionCodec.FORMAT_41C, IndexType.TYPE_REF);
+     * public static final Info CHECK_CAST_JUMBO = new Info(
+     * Opcodes.CHECK_CAST_JUMBO, "check-cast/jumbo",
+     * InstructionCodec.FORMAT_41C, IndexType.TYPE_REF); public static final
+     * Info INSTANCE_OF_JUMBO = new Info( Opcodes.INSTANCE_OF_JUMBO,
+     * "instance-of/jumbo", InstructionCodec.FORMAT_52C, IndexType.TYPE_REF);
+     * public static final Info NEW_INSTANCE_JUMBO = new Info(
+     * Opcodes.NEW_INSTANCE_JUMBO, "new-instance/jumbo",
+     * InstructionCodec.FORMAT_41C, IndexType.TYPE_REF); public static final
+     * Info NEW_ARRAY_JUMBO = new Info( Opcodes.NEW_ARRAY_JUMBO,
+     * "new-array/jumbo", InstructionCodec.FORMAT_52C, IndexType.TYPE_REF);
+     * public static final Info FILLED_NEW_ARRAY_JUMBO = new Info(
+     * Opcodes.FILLED_NEW_ARRAY_JUMBO, "filled-new-array/jumbo",
+     * InstructionCodec.FORMAT_5RC, IndexType.TYPE_REF); public static final
+     * Info IGET_JUMBO = new Info(Opcodes.IGET_JUMBO, "iget/jumbo",
+     * InstructionCodec.FORMAT_52C, IndexType.FIELD_REF); public static final
+     * Info IGET_WIDE_JUMBO = new Info( Opcodes.IGET_WIDE_JUMBO,
+     * "iget-wide/jumbo", InstructionCodec.FORMAT_52C, IndexType.FIELD_REF);
+     * public static final Info IGET_OBJECT_JUMBO = new Info(
+     * Opcodes.IGET_OBJECT_JUMBO, "iget-object/jumbo",
+     * InstructionCodec.FORMAT_52C, IndexType.FIELD_REF); public static final
+     * Info IGET_BOOLEAN_JUMBO = new Info( Opcodes.IGET_BOOLEAN_JUMBO,
+     * "iget-boolean/jumbo", InstructionCodec.FORMAT_52C, IndexType.FIELD_REF);
+     * public static final Info IGET_BYTE_JUMBO = new Info(
+     * Opcodes.IGET_BYTE_JUMBO, "iget-byte/jumbo", InstructionCodec.FORMAT_52C,
+     * IndexType.FIELD_REF); public static final Info IGET_CHAR_JUMBO = new
+     * Info( Opcodes.IGET_CHAR_JUMBO, "iget-char/jumbo",
+     * InstructionCodec.FORMAT_52C, IndexType.FIELD_REF); public static final
+     * Info IGET_SHORT_JUMBO = new Info( Opcodes.IGET_SHORT_JUMBO,
+     * "iget-short/jumbo", InstructionCodec.FORMAT_52C, IndexType.FIELD_REF);
+     * public static final Info IPUT_JUMBO = new Info(Opcodes.IPUT_JUMBO,
+     * "iput/jumbo", InstructionCodec.FORMAT_52C, IndexType.FIELD_REF); public
+     * static final Info IPUT_WIDE_JUMBO = new Info( Opcodes.IPUT_WIDE_JUMBO,
+     * "iput-wide/jumbo", InstructionCodec.FORMAT_52C, IndexType.FIELD_REF);
+     * public static final Info IPUT_OBJECT_JUMBO = new Info(
+     * Opcodes.IPUT_OBJECT_JUMBO, "iput-object/jumbo",
+     * InstructionCodec.FORMAT_52C, IndexType.FIELD_REF); public static final
+     * Info IPUT_BOOLEAN_JUMBO = new Info( Opcodes.IPUT_BOOLEAN_JUMBO,
+     * "iput-boolean/jumbo", InstructionCodec.FORMAT_52C, IndexType.FIELD_REF);
+     * public static final Info IPUT_BYTE_JUMBO = new Info(
+     * Opcodes.IPUT_BYTE_JUMBO, "iput-byte/jumbo", InstructionCodec.FORMAT_52C,
+     * IndexType.FIELD_REF); public static final Info IPUT_CHAR_JUMBO = new
+     * Info( Opcodes.IPUT_CHAR_JUMBO, "iput-char/jumbo",
+     * InstructionCodec.FORMAT_52C, IndexType.FIELD_REF); public static final
+     * Info IPUT_SHORT_JUMBO = new Info( Opcodes.IPUT_SHORT_JUMBO,
+     * "iput-short/jumbo", InstructionCodec.FORMAT_52C, IndexType.FIELD_REF);
+     * public static final Info SGET_JUMBO = new Info(Opcodes.SGET_JUMBO,
+     * "sget/jumbo", InstructionCodec.FORMAT_41C, IndexType.FIELD_REF); public
+     * static final Info SGET_WIDE_JUMBO = new Info( Opcodes.SGET_WIDE_JUMBO,
+     * "sget-wide/jumbo", InstructionCodec.FORMAT_41C, IndexType.FIELD_REF);
+     * public static final Info SGET_OBJECT_JUMBO = new Info(
+     * Opcodes.SGET_OBJECT_JUMBO, "sget-object/jumbo",
+     * InstructionCodec.FORMAT_41C, IndexType.FIELD_REF); public static final
+     * Info SGET_BOOLEAN_JUMBO = new Info( Opcodes.SGET_BOOLEAN_JUMBO,
+     * "sget-boolean/jumbo", InstructionCodec.FORMAT_41C, IndexType.FIELD_REF);
+     * public static final Info SGET_BYTE_JUMBO = new Info(
+     * Opcodes.SGET_BYTE_JUMBO, "sget-byte/jumbo", InstructionCodec.FORMAT_41C,
+     * IndexType.FIELD_REF); public static final Info SGET_CHAR_JUMBO = new
+     * Info( Opcodes.SGET_CHAR_JUMBO, "sget-char/jumbo",
+     * InstructionCodec.FORMAT_41C, IndexType.FIELD_REF); public static final
+     * Info SGET_SHORT_JUMBO = new Info( Opcodes.SGET_SHORT_JUMBO,
+     * "sget-short/jumbo", InstructionCodec.FORMAT_41C, IndexType.FIELD_REF);
+     * public static final Info SPUT_JUMBO = new Info(Opcodes.SPUT_JUMBO,
+     * "sput/jumbo", InstructionCodec.FORMAT_41C, IndexType.FIELD_REF); public
+     * static final Info SPUT_WIDE_JUMBO = new Info( Opcodes.SPUT_WIDE_JUMBO,
+     * "sput-wide/jumbo", InstructionCodec.FORMAT_41C, IndexType.FIELD_REF);
+     * public static final Info SPUT_OBJECT_JUMBO = new Info(
+     * Opcodes.SPUT_OBJECT_JUMBO, "sput-object/jumbo",
+     * InstructionCodec.FORMAT_41C, IndexType.FIELD_REF); public static final
+     * Info SPUT_BOOLEAN_JUMBO = new Info( Opcodes.SPUT_BOOLEAN_JUMBO,
+     * "sput-boolean/jumbo", InstructionCodec.FORMAT_41C, IndexType.FIELD_REF);
+     * public static final Info SPUT_BYTE_JUMBO = new Info(
+     * Opcodes.SPUT_BYTE_JUMBO, "sput-byte/jumbo", InstructionCodec.FORMAT_41C,
+     * IndexType.FIELD_REF); public static final Info SPUT_CHAR_JUMBO = new
+     * Info( Opcodes.SPUT_CHAR_JUMBO, "sput-char/jumbo",
+     * InstructionCodec.FORMAT_41C, IndexType.FIELD_REF); public static final
+     * Info SPUT_SHORT_JUMBO = new Info( Opcodes.SPUT_SHORT_JUMBO,
+     * "sput-short/jumbo", InstructionCodec.FORMAT_41C, IndexType.FIELD_REF);
+     * public static final Info INVOKE_VIRTUAL_JUMBO = new Info(
+     * Opcodes.INVOKE_VIRTUAL_JUMBO, "invoke-virtual/jumbo",
+     * InstructionCodec.FORMAT_5RC, IndexType.METHOD_REF); public static final
+     * Info INVOKE_SUPER_JUMBO = new Info( Opcodes.INVOKE_SUPER_JUMBO,
+     * "invoke-super/jumbo", InstructionCodec.FORMAT_5RC, IndexType.METHOD_REF);
+     * public static final Info INVOKE_DIRECT_JUMBO = new Info(
+     * Opcodes.INVOKE_DIRECT_JUMBO, "invoke-direct/jumbo",
+     * InstructionCodec.FORMAT_5RC, IndexType.METHOD_REF); public static final
+     * Info INVOKE_STATIC_JUMBO = new Info( Opcodes.INVOKE_STATIC_JUMBO,
+     * "invoke-static/jumbo", InstructionCodec.FORMAT_5RC,
+     * IndexType.METHOD_REF); public static final Info INVOKE_INTERFACE_JUMBO =
+     * new Info( Opcodes.INVOKE_INTERFACE_JUMBO, "invoke-interface/jumbo",
+     * InstructionCodec.FORMAT_5RC, IndexType.METHOD_REF); //
+     * END(opcode-info-defs)
+     */
+
+    /********************** autogenerated by AWK ***************/
+    // BEGIN(opcode-info-defs-awk)
+
+    // insert into OpcodeInfo.java
+    public static final Info SPECIAL_FORMAT = new SPECIAL_FORMAT();
+    public static final Info PACKED_SWITCH_PAYLOAD = new PACKED_SWITCH_PAYLOAD();
+    public static final Info SPARSE_SWITCH_PAYLOAD = new SPARSE_SWITCH_PAYLOAD();
+    public static final Info FILL_ARRAY_DATA_PAYLOAD = new FILL_ARRAY_DATA_PAYLOAD();
+    public static final Info NOP = new NOP();
+    public static final Info MOVE = new MOVE();
+    public static final Info MOVE_FROM16 = new MOVE_FROM16();
+    public static final Info MOVE_16 = new MOVE_16();
+    public static final Info MOVE_WIDE = new MOVE_WIDE();
+    public static final Info MOVE_WIDE_FROM16 = new MOVE_WIDE_FROM16();
+    public static final Info MOVE_WIDE_16 = new MOVE_WIDE_16();
+    public static final Info MOVE_OBJECT = new MOVE_OBJECT();
+    public static final Info MOVE_OBJECT_FROM16 = new MOVE_OBJECT_FROM16();
+    public static final Info MOVE_OBJECT_16 = new MOVE_OBJECT_16();
+    public static final Info MOVE_RESULT = new MOVE_RESULT();
+    public static final Info MOVE_RESULT_WIDE = new MOVE_RESULT_WIDE();
+    public static final Info MOVE_RESULT_OBJECT = new MOVE_RESULT_OBJECT();
+    public static final Info MOVE_EXCEPTION = new MOVE_EXCEPTION();
+    public static final Info RETURN_VOID = new RETURN_VOID();
+    public static final Info RETURN = new RETURN();
+    public static final Info RETURN_WIDE = new RETURN_WIDE();
+    public static final Info RETURN_OBJECT = new RETURN_OBJECT();
+    public static final Info CONST_4 = new CONST_4();
+    public static final Info CONST_16 = new CONST_16();
+    public static final Info CONST = new CONST();
+    public static final Info CONST_HIGH16 = new CONST_HIGH16();
+    public static final Info CONST_WIDE_16 = new CONST_WIDE_16();
+    public static final Info CONST_WIDE_32 = new CONST_WIDE_32();
+    public static final Info CONST_WIDE = new CONST_WIDE();
+    public static final Info CONST_WIDE_HIGH16 = new CONST_WIDE_HIGH16();
+    public static final Info CONST_STRING = new CONST_STRING();
+    public static final Info CONST_STRING_JUMBO = new CONST_STRING_JUMBO();
+    public static final Info CONST_CLASS = new CONST_CLASS();
+    public static final Info MONITOR_ENTER = new MONITOR_ENTER();
+    public static final Info MONITOR_EXIT = new MONITOR_EXIT();
+    public static final Info CHECK_CAST = new CHECK_CAST();
+    public static final Info INSTANCE_OF = new INSTANCE_OF();
+    public static final Info ARRAY_LENGTH = new ARRAY_LENGTH();
+    public static final Info NEW_INSTANCE = new NEW_INSTANCE();
+    public static final Info NEW_ARRAY = new NEW_ARRAY();
+    public static final Info FILLED_NEW_ARRAY = new FILLED_NEW_ARRAY();
+    public static final Info FILLED_NEW_ARRAY_RANGE = new FILLED_NEW_ARRAY_RANGE();
+    public static final Info FILL_ARRAY_DATA = new FILL_ARRAY_DATA();
+    public static final Info THROW = new THROW();
+    public static final Info GOTO = new GOTO();
+    public static final Info GOTO_16 = new GOTO_16();
+    public static final Info GOTO_32 = new GOTO_32();
+    public static final Info PACKED_SWITCH = new PACKED_SWITCH();
+    public static final Info SPARSE_SWITCH = new SPARSE_SWITCH();
+    public static final Info CMPL_FLOAT = new CMPL_FLOAT();
+    public static final Info CMPG_FLOAT = new CMPG_FLOAT();
+    public static final Info CMPL_DOUBLE = new CMPL_DOUBLE();
+    public static final Info CMPG_DOUBLE = new CMPG_DOUBLE();
+    public static final Info CMP_LONG = new CMP_LONG();
+    public static final Info IF_EQ = new IF_EQ();
+    public static final Info IF_NE = new IF_NE();
+    public static final Info IF_LT = new IF_LT();
+    public static final Info IF_GE = new IF_GE();
+    public static final Info IF_GT = new IF_GT();
+    public static final Info IF_LE = new IF_LE();
+    public static final Info IF_EQZ = new IF_EQZ();
+    public static final Info IF_NEZ = new IF_NEZ();
+    public static final Info IF_LTZ = new IF_LTZ();
+    public static final Info IF_GEZ = new IF_GEZ();
+    public static final Info IF_GTZ = new IF_GTZ();
+    public static final Info IF_LEZ = new IF_LEZ();
+    public static final Info AGET = new AGET();
+    public static final Info AGET_WIDE = new AGET_WIDE();
+    public static final Info AGET_OBJECT = new AGET_OBJECT();
+    public static final Info AGET_BOOLEAN = new AGET_BOOLEAN();
+    public static final Info AGET_BYTE = new AGET_BYTE();
+    public static final Info AGET_CHAR = new AGET_CHAR();
+    public static final Info AGET_SHORT = new AGET_SHORT();
+    public static final Info APUT = new APUT();
+    public static final Info APUT_WIDE = new APUT_WIDE();
+    public static final Info APUT_OBJECT = new APUT_OBJECT();
+    public static final Info APUT_BOOLEAN = new APUT_BOOLEAN();
+    public static final Info APUT_BYTE = new APUT_BYTE();
+    public static final Info APUT_CHAR = new APUT_CHAR();
+    public static final Info APUT_SHORT = new APUT_SHORT();
+    public static final Info IGET = new IGET();
+    public static final Info IGET_WIDE = new IGET_WIDE();
+    public static final Info IGET_OBJECT = new IGET_OBJECT();
+    public static final Info IGET_BOOLEAN = new IGET_BOOLEAN();
+    public static final Info IGET_BYTE = new IGET_BYTE();
+    public static final Info IGET_CHAR = new IGET_CHAR();
+    public static final Info IGET_SHORT = new IGET_SHORT();
+    public static final Info IPUT = new IPUT();
+    public static final Info IPUT_WIDE = new IPUT_WIDE();
+    public static final Info IPUT_OBJECT = new IPUT_OBJECT();
+    public static final Info IPUT_BOOLEAN = new IPUT_BOOLEAN();
+    public static final Info IPUT_BYTE = new IPUT_BYTE();
+    public static final Info IPUT_CHAR = new IPUT_CHAR();
+    public static final Info IPUT_SHORT = new IPUT_SHORT();
+    public static final Info SGET = new SGET();
+    public static final Info SGET_WIDE = new SGET_WIDE();
+    public static final Info SGET_OBJECT = new SGET_OBJECT();
+    public static final Info SGET_BOOLEAN = new SGET_BOOLEAN();
+    public static final Info SGET_BYTE = new SGET_BYTE();
+    public static final Info SGET_CHAR = new SGET_CHAR();
+    public static final Info SGET_SHORT = new SGET_SHORT();
+    public static final Info SPUT = new SPUT();
+    public static final Info SPUT_WIDE = new SPUT_WIDE();
+    public static final Info SPUT_OBJECT = new SPUT_OBJECT();
+    public static final Info SPUT_BOOLEAN = new SPUT_BOOLEAN();
+    public static final Info SPUT_BYTE = new SPUT_BYTE();
+    public static final Info SPUT_CHAR = new SPUT_CHAR();
+    public static final Info SPUT_SHORT = new SPUT_SHORT();
+    public static final Info INVOKE_VIRTUAL = new INVOKE_VIRTUAL();
+    public static final Info INVOKE_SUPER = new INVOKE_SUPER();
+    public static final Info INVOKE_DIRECT = new INVOKE_DIRECT();
+    public static final Info INVOKE_STATIC = new INVOKE_STATIC();
+    public static final Info INVOKE_INTERFACE = new INVOKE_INTERFACE();
+    public static final Info INVOKE_VIRTUAL_RANGE = new INVOKE_VIRTUAL_RANGE();
+    public static final Info INVOKE_SUPER_RANGE = new INVOKE_SUPER_RANGE();
+    public static final Info INVOKE_DIRECT_RANGE = new INVOKE_DIRECT_RANGE();
+    public static final Info INVOKE_STATIC_RANGE = new INVOKE_STATIC_RANGE();
+    public static final Info INVOKE_INTERFACE_RANGE = new INVOKE_INTERFACE_RANGE();
+    public static final Info NEG_INT = new NEG_INT();
+    public static final Info NOT_INT = new NOT_INT();
+    public static final Info NEG_LONG = new NEG_LONG();
+    public static final Info NOT_LONG = new NOT_LONG();
+    public static final Info NEG_FLOAT = new NEG_FLOAT();
+    public static final Info NEG_DOUBLE = new NEG_DOUBLE();
+    public static final Info INT_TO_LONG = new INT_TO_LONG();
+    public static final Info INT_TO_FLOAT = new INT_TO_FLOAT();
+    public static final Info INT_TO_DOUBLE = new INT_TO_DOUBLE();
+    public static final Info LONG_TO_INT = new LONG_TO_INT();
+    public static final Info LONG_TO_FLOAT = new LONG_TO_FLOAT();
+    public static final Info LONG_TO_DOUBLE = new LONG_TO_DOUBLE();
+    public static final Info FLOAT_TO_INT = new FLOAT_TO_INT();
+    public static final Info FLOAT_TO_LONG = new FLOAT_TO_LONG();
+    public static final Info FLOAT_TO_DOUBLE = new FLOAT_TO_DOUBLE();
+    public static final Info DOUBLE_TO_INT = new DOUBLE_TO_INT();
+    public static final Info DOUBLE_TO_LONG = new DOUBLE_TO_LONG();
+    public static final Info DOUBLE_TO_FLOAT = new DOUBLE_TO_FLOAT();
+    public static final Info INT_TO_BYTE = new INT_TO_BYTE();
+    public static final Info INT_TO_CHAR = new INT_TO_CHAR();
+    public static final Info INT_TO_SHORT = new INT_TO_SHORT();
+    public static final Info ADD_INT = new ADD_INT();
+    public static final Info SUB_INT = new SUB_INT();
+    public static final Info MUL_INT = new MUL_INT();
+    public static final Info DIV_INT = new DIV_INT();
+    public static final Info REM_INT = new REM_INT();
+    public static final Info AND_INT = new AND_INT();
+    public static final Info OR_INT = new OR_INT();
+    public static final Info XOR_INT = new XOR_INT();
+    public static final Info SHL_INT = new SHL_INT();
+    public static final Info SHR_INT = new SHR_INT();
+    public static final Info USHR_INT = new USHR_INT();
+    public static final Info ADD_LONG = new ADD_LONG();
+    public static final Info SUB_LONG = new SUB_LONG();
+    public static final Info MUL_LONG = new MUL_LONG();
+    public static final Info DIV_LONG = new DIV_LONG();
+    public static final Info REM_LONG = new REM_LONG();
+    public static final Info AND_LONG = new AND_LONG();
+    public static final Info OR_LONG = new OR_LONG();
+    public static final Info XOR_LONG = new XOR_LONG();
+    public static final Info SHL_LONG = new SHL_LONG();
+    public static final Info SHR_LONG = new SHR_LONG();
+    public static final Info USHR_LONG = new USHR_LONG();
+    public static final Info ADD_FLOAT = new ADD_FLOAT();
+    public static final Info SUB_FLOAT = new SUB_FLOAT();
+    public static final Info MUL_FLOAT = new MUL_FLOAT();
+    public static final Info DIV_FLOAT = new DIV_FLOAT();
+    public static final Info REM_FLOAT = new REM_FLOAT();
+    public static final Info ADD_DOUBLE = new ADD_DOUBLE();
+    public static final Info SUB_DOUBLE = new SUB_DOUBLE();
+    public static final Info MUL_DOUBLE = new MUL_DOUBLE();
+    public static final Info DIV_DOUBLE = new DIV_DOUBLE();
+    public static final Info REM_DOUBLE = new REM_DOUBLE();
+    public static final Info ADD_INT_2ADDR = new ADD_INT_2ADDR();
+    public static final Info SUB_INT_2ADDR = new SUB_INT_2ADDR();
+    public static final Info MUL_INT_2ADDR = new MUL_INT_2ADDR();
+    public static final Info DIV_INT_2ADDR = new DIV_INT_2ADDR();
+    public static final Info REM_INT_2ADDR = new REM_INT_2ADDR();
+    public static final Info AND_INT_2ADDR = new AND_INT_2ADDR();
+    public static final Info OR_INT_2ADDR = new OR_INT_2ADDR();
+    public static final Info XOR_INT_2ADDR = new XOR_INT_2ADDR();
+    public static final Info SHL_INT_2ADDR = new SHL_INT_2ADDR();
+    public static final Info SHR_INT_2ADDR = new SHR_INT_2ADDR();
+    public static final Info USHR_INT_2ADDR = new USHR_INT_2ADDR();
+    public static final Info ADD_LONG_2ADDR = new ADD_LONG_2ADDR();
+    public static final Info SUB_LONG_2ADDR = new SUB_LONG_2ADDR();
+    public static final Info MUL_LONG_2ADDR = new MUL_LONG_2ADDR();
+    public static final Info DIV_LONG_2ADDR = new DIV_LONG_2ADDR();
+    public static final Info REM_LONG_2ADDR = new REM_LONG_2ADDR();
+    public static final Info AND_LONG_2ADDR = new AND_LONG_2ADDR();
+    public static final Info OR_LONG_2ADDR = new OR_LONG_2ADDR();
+    public static final Info XOR_LONG_2ADDR = new XOR_LONG_2ADDR();
+    public static final Info SHL_LONG_2ADDR = new SHL_LONG_2ADDR();
+    public static final Info SHR_LONG_2ADDR = new SHR_LONG_2ADDR();
+    public static final Info USHR_LONG_2ADDR = new USHR_LONG_2ADDR();
+    public static final Info ADD_FLOAT_2ADDR = new ADD_FLOAT_2ADDR();
+    public static final Info SUB_FLOAT_2ADDR = new SUB_FLOAT_2ADDR();
+    public static final Info MUL_FLOAT_2ADDR = new MUL_FLOAT_2ADDR();
+    public static final Info DIV_FLOAT_2ADDR = new DIV_FLOAT_2ADDR();
+    public static final Info REM_FLOAT_2ADDR = new REM_FLOAT_2ADDR();
+    public static final Info ADD_DOUBLE_2ADDR = new ADD_DOUBLE_2ADDR();
+    public static final Info SUB_DOUBLE_2ADDR = new SUB_DOUBLE_2ADDR();
+    public static final Info MUL_DOUBLE_2ADDR = new MUL_DOUBLE_2ADDR();
+    public static final Info DIV_DOUBLE_2ADDR = new DIV_DOUBLE_2ADDR();
+    public static final Info REM_DOUBLE_2ADDR = new REM_DOUBLE_2ADDR();
+    public static final Info ADD_INT_LIT16 = new ADD_INT_LIT16();
+    public static final Info RSUB_INT = new RSUB_INT();
+    public static final Info MUL_INT_LIT16 = new MUL_INT_LIT16();
+    public static final Info DIV_INT_LIT16 = new DIV_INT_LIT16();
+    public static final Info REM_INT_LIT16 = new REM_INT_LIT16();
+    public static final Info AND_INT_LIT16 = new AND_INT_LIT16();
+    public static final Info OR_INT_LIT16 = new OR_INT_LIT16();
+    public static final Info XOR_INT_LIT16 = new XOR_INT_LIT16();
+    public static final Info ADD_INT_LIT8 = new ADD_INT_LIT8();
+    public static final Info RSUB_INT_LIT8 = new RSUB_INT_LIT8();
+    public static final Info MUL_INT_LIT8 = new MUL_INT_LIT8();
+    public static final Info DIV_INT_LIT8 = new DIV_INT_LIT8();
+    public static final Info REM_INT_LIT8 = new REM_INT_LIT8();
+    public static final Info AND_INT_LIT8 = new AND_INT_LIT8();
+    public static final Info OR_INT_LIT8 = new OR_INT_LIT8();
+    public static final Info XOR_INT_LIT8 = new XOR_INT_LIT8();
+    public static final Info SHL_INT_LIT8 = new SHL_INT_LIT8();
+    public static final Info SHR_INT_LIT8 = new SHR_INT_LIT8();
+    public static final Info USHR_INT_LIT8 = new USHR_INT_LIT8();
+    public static final Info CONST_CLASS_JUMBO = new CONST_CLASS_JUMBO();
+    public static final Info CHECK_CAST_JUMBO = new CHECK_CAST_JUMBO();
+    public static final Info INSTANCE_OF_JUMBO = new INSTANCE_OF_JUMBO();
+    public static final Info NEW_INSTANCE_JUMBO = new NEW_INSTANCE_JUMBO();
+    public static final Info NEW_ARRAY_JUMBO = new NEW_ARRAY_JUMBO();
+    public static final Info FILLED_NEW_ARRAY_JUMBO = new FILLED_NEW_ARRAY_JUMBO();
+    public static final Info IGET_JUMBO = new IGET_JUMBO();
+    public static final Info IGET_WIDE_JUMBO = new IGET_WIDE_JUMBO();
+    public static final Info IGET_OBJECT_JUMBO = new IGET_OBJECT_JUMBO();
+    public static final Info IGET_BOOLEAN_JUMBO = new IGET_BOOLEAN_JUMBO();
+    public static final Info IGET_BYTE_JUMBO = new IGET_BYTE_JUMBO();
+    public static final Info IGET_CHAR_JUMBO = new IGET_CHAR_JUMBO();
+    public static final Info IGET_SHORT_JUMBO = new IGET_SHORT_JUMBO();
+    public static final Info IPUT_JUMBO = new IPUT_JUMBO();
+    public static final Info IPUT_WIDE_JUMBO = new IPUT_WIDE_JUMBO();
+    public static final Info IPUT_OBJECT_JUMBO = new IPUT_OBJECT_JUMBO();
+    public static final Info IPUT_BOOLEAN_JUMBO = new IPUT_BOOLEAN_JUMBO();
+    public static final Info IPUT_BYTE_JUMBO = new IPUT_BYTE_JUMBO();
+    public static final Info IPUT_CHAR_JUMBO = new IPUT_CHAR_JUMBO();
+    public static final Info IPUT_SHORT_JUMBO = new IPUT_SHORT_JUMBO();
+    public static final Info SGET_JUMBO = new SGET_JUMBO();
+    public static final Info SGET_WIDE_JUMBO = new SGET_WIDE_JUMBO();
+    public static final Info SGET_OBJECT_JUMBO = new SGET_OBJECT_JUMBO();
+    public static final Info SGET_BOOLEAN_JUMBO = new SGET_BOOLEAN_JUMBO();
+    public static final Info SGET_BYTE_JUMBO = new SGET_BYTE_JUMBO();
+    public static final Info SGET_CHAR_JUMBO = new SGET_CHAR_JUMBO();
+    public static final Info SGET_SHORT_JUMBO = new SGET_SHORT_JUMBO();
+    public static final Info SPUT_JUMBO = new SPUT_JUMBO();
+    public static final Info SPUT_WIDE_JUMBO = new SPUT_WIDE_JUMBO();
+    public static final Info SPUT_OBJECT_JUMBO = new SPUT_OBJECT_JUMBO();
+    public static final Info SPUT_BOOLEAN_JUMBO = new SPUT_BOOLEAN_JUMBO();
+    public static final Info SPUT_BYTE_JUMBO = new SPUT_BYTE_JUMBO();
+    public static final Info SPUT_CHAR_JUMBO = new SPUT_CHAR_JUMBO();
+    public static final Info SPUT_SHORT_JUMBO = new SPUT_SHORT_JUMBO();
+    public static final Info INVOKE_VIRTUAL_JUMBO = new INVOKE_VIRTUAL_JUMBO();
+    public static final Info INVOKE_SUPER_JUMBO = new INVOKE_SUPER_JUMBO();
+    public static final Info INVOKE_DIRECT_JUMBO = new INVOKE_DIRECT_JUMBO();
+    public static final Info INVOKE_STATIC_JUMBO = new INVOKE_STATIC_JUMBO();
+    public static final Info INVOKE_INTERFACE_JUMBO = new INVOKE_INTERFACE_JUMBO();
+    // END(opcode-info-defs-awk)
+
+    // Static initialization.
+    static {
+        INFO = new Info[Opcodes.MAX_VALUE - Opcodes.MIN_VALUE + 1];
+
+        // TODO: Stop using this constant.
+        set(SPECIAL_FORMAT);
+
+        // TODO: These payload opcodes should be generated by opcode-gen.
+        set(PACKED_SWITCH_PAYLOAD);
+        set(SPARSE_SWITCH_PAYLOAD);
+        set(FILL_ARRAY_DATA_PAYLOAD);
+
+        // BEGIN(opcode-info-init); GENERATED AUTOMATICALLY BY opcode-gen
+        set(NOP);
+        set(MOVE);
+        set(MOVE_FROM16);
+        set(MOVE_16);
+        set(MOVE_WIDE);
+        set(MOVE_WIDE_FROM16);
+        set(MOVE_WIDE_16);
+        set(MOVE_OBJECT);
+        set(MOVE_OBJECT_FROM16);
+        set(MOVE_OBJECT_16);
+        set(MOVE_RESULT);
+        set(MOVE_RESULT_WIDE);
+        set(MOVE_RESULT_OBJECT);
+        set(MOVE_EXCEPTION);
+        set(RETURN_VOID);
+        set(RETURN);
+        set(RETURN_WIDE);
+        set(RETURN_OBJECT);
+        set(CONST_4);
+        set(CONST_16);
+        set(CONST);
+        set(CONST_HIGH16);
+        set(CONST_WIDE_16);
+        set(CONST_WIDE_32);
+        set(CONST_WIDE);
+        set(CONST_WIDE_HIGH16);
+        set(CONST_STRING);
+        set(CONST_STRING_JUMBO);
+        set(CONST_CLASS);
+        set(MONITOR_ENTER);
+        set(MONITOR_EXIT);
+        set(CHECK_CAST);
+        set(INSTANCE_OF);
+        set(ARRAY_LENGTH);
+        set(NEW_INSTANCE);
+        set(NEW_ARRAY);
+        set(FILLED_NEW_ARRAY);
+        set(FILLED_NEW_ARRAY_RANGE);
+        set(FILL_ARRAY_DATA);
+        set(THROW);
+        set(GOTO);
+        set(GOTO_16);
+        set(GOTO_32);
+        set(PACKED_SWITCH);
+        set(SPARSE_SWITCH);
+        set(CMPL_FLOAT);
+        set(CMPG_FLOAT);
+        set(CMPL_DOUBLE);
+        set(CMPG_DOUBLE);
+        set(CMP_LONG);
+        set(IF_EQ);
+        set(IF_NE);
+        set(IF_LT);
+        set(IF_GE);
+        set(IF_GT);
+        set(IF_LE);
+        set(IF_EQZ);
+        set(IF_NEZ);
+        set(IF_LTZ);
+        set(IF_GEZ);
+        set(IF_GTZ);
+        set(IF_LEZ);
+        set(AGET);
+        set(AGET_WIDE);
+        set(AGET_OBJECT);
+        set(AGET_BOOLEAN);
+        set(AGET_BYTE);
+        set(AGET_CHAR);
+        set(AGET_SHORT);
+        set(APUT);
+        set(APUT_WIDE);
+        set(APUT_OBJECT);
+        set(APUT_BOOLEAN);
+        set(APUT_BYTE);
+        set(APUT_CHAR);
+        set(APUT_SHORT);
+        set(IGET);
+        set(IGET_WIDE);
+        set(IGET_OBJECT);
+        set(IGET_BOOLEAN);
+        set(IGET_BYTE);
+        set(IGET_CHAR);
+        set(IGET_SHORT);
+        set(IPUT);
+        set(IPUT_WIDE);
+        set(IPUT_OBJECT);
+        set(IPUT_BOOLEAN);
+        set(IPUT_BYTE);
+        set(IPUT_CHAR);
+        set(IPUT_SHORT);
+        set(SGET);
+        set(SGET_WIDE);
+        set(SGET_OBJECT);
+        set(SGET_BOOLEAN);
+        set(SGET_BYTE);
+        set(SGET_CHAR);
+        set(SGET_SHORT);
+        set(SPUT);
+        set(SPUT_WIDE);
+        set(SPUT_OBJECT);
+        set(SPUT_BOOLEAN);
+        set(SPUT_BYTE);
+        set(SPUT_CHAR);
+        set(SPUT_SHORT);
+        set(INVOKE_VIRTUAL);
+        set(INVOKE_SUPER);
+        set(INVOKE_DIRECT);
+        set(INVOKE_STATIC);
+        set(INVOKE_INTERFACE);
+        set(INVOKE_VIRTUAL_RANGE);
+        set(INVOKE_SUPER_RANGE);
+        set(INVOKE_DIRECT_RANGE);
+        set(INVOKE_STATIC_RANGE);
+        set(INVOKE_INTERFACE_RANGE);
+        set(NEG_INT);
+        set(NOT_INT);
+        set(NEG_LONG);
+        set(NOT_LONG);
+        set(NEG_FLOAT);
+        set(NEG_DOUBLE);
+        set(INT_TO_LONG);
+        set(INT_TO_FLOAT);
+        set(INT_TO_DOUBLE);
+        set(LONG_TO_INT);
+        set(LONG_TO_FLOAT);
+        set(LONG_TO_DOUBLE);
+        set(FLOAT_TO_INT);
+        set(FLOAT_TO_LONG);
+        set(FLOAT_TO_DOUBLE);
+        set(DOUBLE_TO_INT);
+        set(DOUBLE_TO_LONG);
+        set(DOUBLE_TO_FLOAT);
+        set(INT_TO_BYTE);
+        set(INT_TO_CHAR);
+        set(INT_TO_SHORT);
+        set(ADD_INT);
+        set(SUB_INT);
+        set(MUL_INT);
+        set(DIV_INT);
+        set(REM_INT);
+        set(AND_INT);
+        set(OR_INT);
+        set(XOR_INT);
+        set(SHL_INT);
+        set(SHR_INT);
+        set(USHR_INT);
+        set(ADD_LONG);
+        set(SUB_LONG);
+        set(MUL_LONG);
+        set(DIV_LONG);
+        set(REM_LONG);
+        set(AND_LONG);
+        set(OR_LONG);
+        set(XOR_LONG);
+        set(SHL_LONG);
+        set(SHR_LONG);
+        set(USHR_LONG);
+        set(ADD_FLOAT);
+        set(SUB_FLOAT);
+        set(MUL_FLOAT);
+        set(DIV_FLOAT);
+        set(REM_FLOAT);
+        set(ADD_DOUBLE);
+        set(SUB_DOUBLE);
+        set(MUL_DOUBLE);
+        set(DIV_DOUBLE);
+        set(REM_DOUBLE);
+        set(ADD_INT_2ADDR);
+        set(SUB_INT_2ADDR);
+        set(MUL_INT_2ADDR);
+        set(DIV_INT_2ADDR);
+        set(REM_INT_2ADDR);
+        set(AND_INT_2ADDR);
+        set(OR_INT_2ADDR);
+        set(XOR_INT_2ADDR);
+        set(SHL_INT_2ADDR);
+        set(SHR_INT_2ADDR);
+        set(USHR_INT_2ADDR);
+        set(ADD_LONG_2ADDR);
+        set(SUB_LONG_2ADDR);
+        set(MUL_LONG_2ADDR);
+        set(DIV_LONG_2ADDR);
+        set(REM_LONG_2ADDR);
+        set(AND_LONG_2ADDR);
+        set(OR_LONG_2ADDR);
+        set(XOR_LONG_2ADDR);
+        set(SHL_LONG_2ADDR);
+        set(SHR_LONG_2ADDR);
+        set(USHR_LONG_2ADDR);
+        set(ADD_FLOAT_2ADDR);
+        set(SUB_FLOAT_2ADDR);
+        set(MUL_FLOAT_2ADDR);
+        set(DIV_FLOAT_2ADDR);
+        set(REM_FLOAT_2ADDR);
+        set(ADD_DOUBLE_2ADDR);
+        set(SUB_DOUBLE_2ADDR);
+        set(MUL_DOUBLE_2ADDR);
+        set(DIV_DOUBLE_2ADDR);
+        set(REM_DOUBLE_2ADDR);
+        set(ADD_INT_LIT16);
+        set(RSUB_INT);
+        set(MUL_INT_LIT16);
+        set(DIV_INT_LIT16);
+        set(REM_INT_LIT16);
+        set(AND_INT_LIT16);
+        set(OR_INT_LIT16);
+        set(XOR_INT_LIT16);
+        set(ADD_INT_LIT8);
+        set(RSUB_INT_LIT8);
+        set(MUL_INT_LIT8);
+        set(DIV_INT_LIT8);
+        set(REM_INT_LIT8);
+        set(AND_INT_LIT8);
+        set(OR_INT_LIT8);
+        set(XOR_INT_LIT8);
+        set(SHL_INT_LIT8);
+        set(SHR_INT_LIT8);
+        set(USHR_INT_LIT8);
+        set(CONST_CLASS_JUMBO);
+        set(CHECK_CAST_JUMBO);
+        set(INSTANCE_OF_JUMBO);
+        set(NEW_INSTANCE_JUMBO);
+        set(NEW_ARRAY_JUMBO);
+        set(FILLED_NEW_ARRAY_JUMBO);
+        set(IGET_JUMBO);
+        set(IGET_WIDE_JUMBO);
+        set(IGET_OBJECT_JUMBO);
+        set(IGET_BOOLEAN_JUMBO);
+        set(IGET_BYTE_JUMBO);
+        set(IGET_CHAR_JUMBO);
+        set(IGET_SHORT_JUMBO);
+        set(IPUT_JUMBO);
+        set(IPUT_WIDE_JUMBO);
+        set(IPUT_OBJECT_JUMBO);
+        set(IPUT_BOOLEAN_JUMBO);
+        set(IPUT_BYTE_JUMBO);
+        set(IPUT_CHAR_JUMBO);
+        set(IPUT_SHORT_JUMBO);
+        set(SGET_JUMBO);
+        set(SGET_WIDE_JUMBO);
+        set(SGET_OBJECT_JUMBO);
+        set(SGET_BOOLEAN_JUMBO);
+        set(SGET_BYTE_JUMBO);
+        set(SGET_CHAR_JUMBO);
+        set(SGET_SHORT_JUMBO);
+        set(SPUT_JUMBO);
+        set(SPUT_WIDE_JUMBO);
+        set(SPUT_OBJECT_JUMBO);
+        set(SPUT_BOOLEAN_JUMBO);
+        set(SPUT_BYTE_JUMBO);
+        set(SPUT_CHAR_JUMBO);
+        set(SPUT_SHORT_JUMBO);
+        set(INVOKE_VIRTUAL_JUMBO);
+        set(INVOKE_SUPER_JUMBO);
+        set(INVOKE_DIRECT_JUMBO);
+        set(INVOKE_STATIC_JUMBO);
+        set(INVOKE_INTERFACE_JUMBO);
+        // END(opcode-info-init)
+    }
+
+    /**
+     * This class is uninstantiable.
+     */
+    private OpcodeInfo() {
+        // This space intentionally left blank.
+    }
+
+    /**
+     * Gets the {@link @Info} for the given opcode value.
+     * 
+     * @param opcode {@code Opcodes.MIN_VALUE..Opcodes.MAX_VALUE;} the opcode
+     *            value
+     * @return non-null; the associated opcode information instance
+     */
+    public static Info get(int opcode) {
+
+        int idx = opcode - Opcodes.MIN_VALUE;
+
+        try {
+            Info result = INFO[idx];
+            if (result != null) {
+                return result;
+            }
+        } catch (ArrayIndexOutOfBoundsException ex) {
+            // Fall through.
+        }
+
+        throw new IllegalArgumentException("bogus opcode: " + Hex.u2or4(opcode));
+    }
+
+    /**
+     * Gets the name of the given opcode.
+     */
+    public static String getName(int opcode) {
+        return get(opcode).getName();
+    }
+
+    /**
+     * Gets the format (an {@link InstructionCodec}) for the given opcode value.
+     */
+    public static InstructionCodec getFormat(int opcode) {
+        return get(opcode).getFormat();
+    }
+
+    /**
+     * Gets the {@link IndexType} for the given opcode value.
+     */
+    public static IndexType getIndexType(int opcode) {
+        return get(opcode).getIndexType();
+    }
+
+    /**
+     * Puts the given opcode into the table of all ops.
+     * 
+     * @param opcode non-null; the opcode
+     */
+    private static void set(Info opcode) {
+        int idx = opcode.getOpcode() - Opcodes.MIN_VALUE;
+        INFO[idx] = opcode;
+    }
+
+    /**
+     * Information about an opcode.
+     */
+    public static class Info {
+
+        private final int opcode;
+        private final String name;
+        private final InstructionCodec format;
+        private final IndexType indexType;
+
+        protected OpcodeVerifier verifier = new DefaultVerifier();
+        protected RegisterTypeSetter regTypeFactory = new DefaultRegisterTypes();
+
+        public Info(int opcode, String name, InstructionCodec format,
+                IndexType indexType) {
+            this.opcode = opcode;
+            this.name = name;
+            this.format = format;
+            this.indexType = indexType;
+        }
+
+        public int getOpcode() {
+            return opcode;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public InstructionCodec getFormat() {
+            return format;
+        }
+
+        public IndexType getIndexType() {
+            return indexType;
+        }
+
+        /**
+         * Returns the register type for a given register reference or null if
+         * that reference is not used by the format. A return type of
+         * kRegTypeUnknown means that the register type can only be determined
+         * by DecodedInstruction.
+         * <p>
+         * Calls format.getRegisterType and then applies some additional checks
+         * to throw the IllegalArgumentException if necessary.
+         * 
+         * @param ref the reference to check
+         * @throws IllegalArgumentException if the register reference is not
+         *             used by the opcode.
+         * @throws IllegalArgumentException if ref is null.
+         * @return the RegisterType of the reference
+         */
+        public RegisterType getFormatRegisterTypeOrThrow(RegisterReference ref) {
+
+            if (ref == null)
+                throw new IllegalArgumentException("ref cannot be null");
+
+            RegisterType result = format.getRegisterType(ref);
+            if (result == null) {
+                StringBuilder builder = new StringBuilder();
+                builder.append("ref ").append(ref.toString())
+                        .append(" is not used by this instruction");
+                throw new IllegalArgumentException(builder.toString());
+            }
+
+            if (result.typeEnum() == kRegTypeUnknown)
+                result = getRegisterType(ref);
+
+            return result;
+
+        }
+
+        /**
+         * Override this method, and call super. Then, modify result depending
+         * on the inforamtion in the opcode definition. DecodedInstruction will
+         * be able to make further determinations.
+         * 
+         * @param ref the reference type to check.
+         * @return the register type used for that reference.
+         */
+        public RegisterType getRegisterType(RegisterReference ref) {
+            return getFormatRegisterTypeOrThrow(ref);
+        }
+
+        /**
+         * Calls format.getRegisterTypes(). See InstructionCodes.format() for
+         * more information.
+         * 
+         * @return all register types used by this opcode.
+         */
+        public Hashtable<RegisterReference, RegisterType> getRegisterTypes() {
+            return format.getRegisterTypes();
+
+        }
+
+        /**
+         * Calcualtes a register type based on a decoded instruction and a
+         * reference. Provides instance level information.
+         * getRegisterTypes(RegisterReference) returns the known register type
+         * that can be returned without the instruction instance data. This
+         * function returns more specific register information given a specific
+         * DecodedInstructionInstance.
+         * 
+         * @param instruction
+         * @param ref
+         * @return
+         */
+        public RegisterType getRegisterType(DecodedInstruction instruction,
+                RegisterReference vNum) {
+            throw new UnsupportedOperationException("TODO: define me.");
+        }
+
+        /**
+         * Same as getRegisterType(DecodedInstruction, RegisterReference), but
+         * this function figures out which register reference the parameter
+         * refers to. This function is useful for instructions that are able to
+         * access more than the five registers (for example, RegisterRange
+         * instructions).
+         * 
+         * @param instruction the instruction to use when calculating register
+         *            type
+         * @param vNum the register number to retrieve information about.
+         * @return the register type used by the register number.
+         */
+        public RegisterType getRegisterType(DecodedInstruction instruction,
+                int vNum) {
+
+            // TODO Override for RegisterRangeDecodedInstruction.
+
+            int regCount = instruction.getRegisterCount();
+
+            if (regCount > 0) {
+                int regValue = instruction.getA();
+                if (regValue == vNum)
+                    return getRegisterType(instruction, RegisterReference.A);
+            }
+
+            if (regCount > 1) {
+                int regValue = instruction.getB();
+                if (regValue == vNum)
+                    return getRegisterType(instruction, RegisterReference.B);
+            }
+
+            if (regCount > 2) {
+                int regValue = instruction.getC();
+                if (regValue == vNum)
+                    return getRegisterType(instruction, RegisterReference.C);
+            }
+
+            if (regCount > 3) {
+                int regValue = instruction.getD();
+                if (regValue == vNum)
+                    return getRegisterType(instruction, RegisterReference.D);
+            }
+
+            if (regCount > 4) {
+                int regValue = instruction.getE();
+                if (regValue == vNum)
+                    return getRegisterType(instruction, RegisterReference.E);
+            }
+
+            StringBuilder builder = new StringBuilder();
+            builder.append("register ").append(vNum)
+                    .append(" is not used by this instruction");
+            throw new IllegalArgumentException(builder.toString());
+
+        }
+
+        /**
+         * Verifies the instruction or fails. Should be called before
+         * getRegisterTypes(DecodedInstruction, RegisterTypeSparseArray). The
+         * registerTypes sparse array is not modified.
+         * <p>
+         * This function and getRegisterTypes(DecodedInstruciton,
+         * SparseArray<RegisterTypes>) can be used together. First, call this
+         * function, and if there is no failure (e.g. no exception thrown), then
+         * you can call getRegisterTypes(DecodedInstruction,
+         * RegisterTypeSparseArray) without problem.
+         * 
+         * @param instruction
+         * @return
+         * @throws VerifyException
+         */
+        public void verify(DecodedInstruction instruction,
+                RegisterTypeSparseArray registerTypes) throws VerifyException {
+            verifier.verify(instruction, registerTypes);
+        }
+
+        /**
+         * Modifies the sparse array (without checking) to reflect the register
+         * types used by the specified instruction. All register types are
+         * added, including register types that require two register slots.
+         * 
+         * @param registerTypes
+         * @throws VerifyException
+         */
+        public void getRegisterTypes(DecodedInstruction instruction,
+                RegisterTypeSparseArray registerTypes) {
+            regTypeFactory.set(instruction, registerTypes);
+            // RegisterType.dumpRegisterTypes(instruction, registerTypes);
+        }
+    }
+
+    /**
+     * Performs verification on a set of instructions. This involved running a
+     * verification on each instruction and then updating the register types.
+     * 
+     * @param registerTypes the register types that are updated from each
+     *            instruction after verification.
+     * @param instructions the instruction to verify and update registers with.
+     * @throws VerifyException if veification for any instruction fails.
+     */
+    public static RegisterTypeSparseArray verifyAndGenerateTypes(
+            MethodDefinition target) throws VerifyException {
+
+        InstructionList list = target.instructionsDecodedAsList();
+        RegisterTypeSparseArray registerTypes = target.getTypesFromSignature();
+
+        for (int i = 0; i < list.size(); i++) {
+            DecodedInstruction instruction = list.valueAt(i);
+            OpcodeInfo.Info opInfo = OpcodeInfo.get(instruction.getOpcode());
+            opInfo.verify(instruction, registerTypes);
+            opInfo.getRegisterTypes(instruction, registerTypes);
+        }
+
+        return registerTypes;
+
+    }
+
+    /**
+     * Updates register types from an instruction set without doing
+     * verification.
+     * 
+     * @param registerTypes the register types to update.
+     * @param instructions the instructions that should be used ot update the
+     *            register types.
+     */
+    public static void generateTypes(RegisterTypeSparseArray registerTypes,
+            InstructionList instructions, boolean logTypes) {
+
+        if (logTypes) {
+            try {
+                RegisterType.dumpRegisterTypes(null, registerTypes);
+            } catch (IllegalStateException ex) {
+                throw new IllegalStateException(
+                        "register types from signature are invalid", ex);
+            }
+        }
+
+        for (int i = 0; i < instructions.size(); i++) {
+            DecodedInstruction instruction = instructions.valueAt(i);
+            OpcodeInfo.Info opInfo = OpcodeInfo.get(instruction.getOpcode());
+            try {
+                opInfo.getRegisterTypes(instruction, registerTypes);
+            } catch (IllegalStateException ex) {
+
+                // TODO remove all catches for Throwable throughout the project.
+
+                if (DO_LOG)
+                    Log.d(RegisterType.LOG_TAG, String.format(
+                            "Error processing %s(%d)", instruction.getOpcodeEnum()
+                                    .toString(), instruction.getOpcode()));
+                throw ex;
+            }
+
+            if (logTypes)
+                RegisterType.dumpRegisterTypes(instruction, registerTypes);
+
+        }
+
+        if (logTypes)
+            registerTypes.dumpHistory();
+
+    }
+
+}
