@@ -25,6 +25,7 @@ import java.util.Arrays;
 import android.util.Log;
 
 import com.android.dx.io.dexbuffer.DexBuffer;
+import com.android.dx.io.dexbuffer.Section;
 import com.android.dx.util.DexException;
 
 // TODO: create a read-only version of DexFile, where the objects are simply memory mapped.
@@ -42,28 +43,28 @@ public final class TableOfContents {
      */
 
     /* constant pool */
-    public final Section header = new Section(0x0000);
-    public final Section stringIds = new Section(0x0001);
-    public final Section typeIds = new Section(0x0002);
-    public final Section protoIds = new Section(0x0003);
-    public final Section fieldIds = new Section(0x0004);
-    public final Section methodIds = new Section(0x0005);
-    public final Section classDefs = new Section(0x0006);
+    public final TOCSection header = new TOCSection(0x0000);
+    public final TOCSection stringIds = new TOCSection(0x0001);
+    public final TOCSection typeIds = new TOCSection(0x0002);
+    public final TOCSection protoIds = new TOCSection(0x0003);
+    public final TOCSection fieldIds = new TOCSection(0x0004);
+    public final TOCSection methodIds = new TOCSection(0x0005);
+    public final TOCSection classDefs = new TOCSection(0x0006);
 
     /* data section */
-    public final Section mapList = new Section(0x1000);
-    public final Section typeLists = new Section(0x1001);
-    public final Section annotationSetRefLists = new Section(0x1002);
-    public final Section annotationSets = new Section(0x1003);
-    public final Section classDatas = new Section(0x2000);
-    public final Section codes = new Section(0x2001);
-    public final Section stringDatas = new Section(0x2002);
-    public final Section debugInfos = new Section(0x2003);
-    public final Section annotations = new Section(0x2004);
-    public final Section encodedArrays = new Section(0x2005);
-    public final Section annotationsDirectories = new Section(0x2006);
+    public final TOCSection mapList = new TOCSection(0x1000);
+    public final TOCSection typeLists = new TOCSection(0x1001);
+    public final TOCSection annotationSetRefLists = new TOCSection(0x1002);
+    public final TOCSection annotationSets = new TOCSection(0x1003);
+    public final TOCSection classDatas = new TOCSection(0x2000);
+    public final TOCSection codes = new TOCSection(0x2001);
+    public final TOCSection stringDatas = new TOCSection(0x2002);
+    public final TOCSection debugInfos = new TOCSection(0x2003);
+    public final TOCSection annotations = new TOCSection(0x2004);
+    public final TOCSection encodedArrays = new TOCSection(0x2005);
+    public final TOCSection annotationsDirectories = new TOCSection(0x2006);
 
-    public final Section[] sections = {
+    public final TOCSection[] sections = {
             header, stringIds, typeIds, protoIds,
             fieldIds, methodIds, classDefs, mapList, typeLists,
             annotationSetRefLists, annotationSets, classDatas, codes,
@@ -166,12 +167,12 @@ public final class TableOfContents {
         computeSizesFromOffsets();
     }
 
-    private void readHeader(DexBuffer.Section headerIn) // FIXME contains no
-                                                        // explicit order
-                                                        // requirement -
-                                                        // readHeader must be
-                                                        // called before
-                                                        // readMap.
+    private void readHeader(Section headerIn) // FIXME contains no
+                                              // explicit order
+                                              // requirement -
+                                              // readHeader must be
+                                              // called before
+                                              // readMap.
             throws UnsupportedEncodingException {
         magic = headerIn.readByteArray(8);
         apiTarget = DexFormat.magicToApi(magic);
@@ -224,13 +225,13 @@ public final class TableOfContents {
      * A check is made to ensure that the values in the header and the values in
      * the map are consistent.
      */
-    private void readMap(DexBuffer.Section in) throws IOException {
+    private void readMap(Section in) throws IOException {
         int mapSize = in.readInt();
-        Section previous = null;
+        TOCSection previous = null;
         for (int i = 0; i < mapSize; i++) {
             short type = in.readShort();
             in.readShort(); // unused
-            Section section = getSection(type);
+            TOCSection section = getSection(type);
             int size = in.readInt();
             int offset = in.readInt();
 
@@ -269,8 +270,8 @@ public final class TableOfContents {
         Log.i(LOG_TAG, "link " + linkOff + ":" + linkSize);
         Log.i(LOG_TAG, "data " + dataOff + ":" + dataSize);
 
-        for (Section s : sections) {
-            Log.i(LOG_TAG, Section.toName(s.type) + " offset:size " + s.off
+        for (TOCSection s : sections) {
+            Log.i(LOG_TAG, TOCSection.toName(s.type) + " offset:size " + s.off
                     + ":" + s.size);
 
         }
@@ -290,7 +291,7 @@ public final class TableOfContents {
         Arrays.sort(sections);
         int end = getEnd();
         for (int i = sections.length - 1; i >= 0; i--) {
-            Section section = sections[i];
+            TOCSection section = sections[i];
             if (section.off == -1) {
                 continue;
             }
@@ -309,8 +310,8 @@ public final class TableOfContents {
         }
     }
 
-    private Section getSection(short type) {
-        for (Section section : sections) {
+    private TOCSection getSection(short type) {
+        for (TOCSection section : sections) {
             if (section.type == type) {
                 return section;
             }
@@ -318,7 +319,7 @@ public final class TableOfContents {
         throw new IllegalArgumentException("No such map item: " + type);
     }
 
-    public void writeHeader(DexBuffer.Section out) throws IOException {
+    public void writeHeader(Section out) throws IOException {
         out.write(DexFormat.apiToMagic(DexFormat.API_CURRENT).getBytes("UTF-8"));
         out.writeInt(checksum);
         out.write(signature);
@@ -344,26 +345,26 @@ public final class TableOfContents {
         out.writeInt(dataOff);
     }
 
-    public void writeMap(DexBuffer.Section out) throws IOException {
+    public void writeMap(Section out) throws IOException {
         int count = 0;
-        for (Section section : sections) {
+        for (TOCSection section : sections) {
             if (section.exists()) {
                 count++;
             }
         }
 
         out.writeInt(count);
-        for (Section section : sections) {
+        for (TOCSection section : sections) {
             if (section.exists()) {
-                out.writeShort(section.type);
-                out.writeShort((short) 0);
+                out.write(section.type);
+                out.write((short) 0);
                 out.writeInt(section.size);
                 out.writeInt(section.off);
             }
         }
     }
 
-    public static class Section implements Comparable<Section> {
+    public static class TOCSection implements Comparable<TOCSection> {
 
         public final short type;
 
@@ -383,7 +384,7 @@ public final class TableOfContents {
          */
         public int byteCount = 0;
 
-        public Section(int type) {
+        public TOCSection(int type) {
             this.type = (short) type;
         }
 
@@ -391,7 +392,7 @@ public final class TableOfContents {
             return size > 0;
         }
 
-        public int compareTo(Section section) {
+        public int compareTo(TOCSection section) {
             if (off != section.off) {
                 return off < section.off ? -1 : 1;
             }
@@ -405,7 +406,7 @@ public final class TableOfContents {
         }
 
         public String getName() {
-            return Section.toName(type);
+            return TOCSection.toName(type);
         }
 
         /**
