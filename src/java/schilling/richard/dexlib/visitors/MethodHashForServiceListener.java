@@ -1,7 +1,5 @@
 package schilling.richard.dexlib.visitors;
 
-import schilling.richard.r3.app.FinnrService;
-import schilling.richard.r3.statelogging.MethodHash;
 import android.content.Context;
 import android.content.Intent;
 

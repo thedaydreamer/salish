@@ -5,7 +5,6 @@ import java.io.File;
 import java.io.IOException;
 
 import schilling.richard.dexlib.util.Patterns;
-import schilling.richard.r3.app.FinnrApp;
 import android.os.Environment;
 import android.util.Log;
 

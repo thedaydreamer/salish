@@ -5,7 +5,6 @@ import java.util.List;
 
 import schilling.richard.dalvik.vm.oo.util.ClassPathUtil;
 import schilling.richard.dexlib.proxy.DexFileProxyGenerator;
-import schilling.richard.r3.app.Enhance;
 
 import com.android.dx.io.ProtoId;
 

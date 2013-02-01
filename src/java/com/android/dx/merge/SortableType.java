@@ -19,7 +19,7 @@ package com.android.dx.merge;
 import java.util.Comparator;
 
 import com.android.dx.io.ClassDef;
-import com.android.dx.io.DexBuffer;
+import com.android.dx.io.dexbuffer.DexBuffer;
 
 /**
  * Name and structure of a type. Used to order types such that each type is

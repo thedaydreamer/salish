@@ -12,7 +12,7 @@ import schilling.richard.dexlib.lang.clazz.PrimitiveEnum;
 import android.util.Log;
 
 import com.android.dx.io.ClassDef;
-import com.android.dx.io.DexBuffer;
+import com.android.dx.io.dexbuffer.DexBuffer;
 
 /**
  * This class produces various types of ClassDef extended classes based on a

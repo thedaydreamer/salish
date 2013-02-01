@@ -1,9 +1,9 @@
 
 package com.android.dx.io.opcode.verify;
 
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 import static schilling.richard.dalvik.vm.analysis.RegisterCategory.kTypeCategory1nr;
 import static schilling.richard.dalvik.vm.analysis.VerifyErrorCause.VERIFY_ERROR_GENERIC;
-import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 import schilling.richard.dalvik.vm.analysis.RegisterCategory;
 import schilling.richard.dalvik.vm.analysis.RegisterType;
 import schilling.richard.dalvik.vm.analysis.RegisterTypeSparseArray;

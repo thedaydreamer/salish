@@ -28,9 +28,6 @@
 
 package schilling.richard.dexlib.disassembler.adapter;
 
-import static schilling.richard.r3.app.util.RegisterPreferenceEnum.ALL;
-import static schilling.richard.r3.app.util.RegisterPreferenceEnum.ALLPOST;
-import static schilling.richard.r3.app.util.RegisterPreferenceEnum.DEST;
 import java.io.IOException;
 import java.util.BitSet;
 
@@ -38,7 +35,6 @@ import schilling.richard.dexlib.Code.Analysis.AnalyzedInstruction;
 import schilling.richard.dexlib.Code.Analysis.MethodAnalyzer;
 import schilling.richard.dexlib.io.deserialize.ClassDataItem;
 import schilling.richard.io.IndentingWriter;
-import schilling.richard.r3.app.FinnrApp;
 
 public class PostInstructionRegisterInfoMethodItem extends MethodItem {
 	private final AnalyzedInstruction analyzedInstruction;

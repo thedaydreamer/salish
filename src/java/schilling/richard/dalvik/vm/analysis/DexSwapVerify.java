@@ -8,7 +8,7 @@ import com.android.dx.io.ClassData;
 import com.android.dx.io.Code;
 import com.android.dx.io.Code.CatchHandler;
 import com.android.dx.io.Code.Try;
-import com.android.dx.io.DexBuffer;
+import com.android.dx.io.dexbuffer.DexBuffer;
 
 public class DexSwapVerify {
 

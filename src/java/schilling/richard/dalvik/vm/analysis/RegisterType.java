@@ -36,8 +36,8 @@ import android.util.Log;
 import android.util.SparseArray;
 
 import com.android.dx.io.ClassDef;
-import com.android.dx.io.DexBuffer;
 import com.android.dx.io.IndexType;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.io.instructions.DecodedInstruction;
 import com.android.dx.merge.MethodDefinition;
 import com.android.dx.rop.type.Type;

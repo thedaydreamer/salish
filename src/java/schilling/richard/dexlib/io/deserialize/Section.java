@@ -38,7 +38,6 @@ import schilling.richard.dexlib.io.DexFile;
 import schilling.richard.dexlib.io.ReadContext;
 import schilling.richard.dexlib.util.AlignmentUtils;
 import schilling.richard.io.Input;
-import schilling.richard.r3.app.FinnrApp;
 import android.util.Log;
 
 public abstract class Section<T extends Item> {

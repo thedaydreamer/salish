@@ -16,8 +16,8 @@
 
 package com.android.dx.io.opcode;
 
-import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeUnknown;
 import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
+import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeUnknown;
 
 import java.util.Hashtable;
 

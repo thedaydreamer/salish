@@ -16,14 +16,15 @@
 
 package com.android.dx.dex;
 
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
+
 import java.io.IOException;
-import static org.gnu.salish.debug.util.DebugConstants.*;
 import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 
 import android.util.Log;
 
-import com.android.dx.io.DexBuffer;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.util.DexException;
 
 // TODO: create a read-only version of DexFile, where the objects are simply memory mapped.

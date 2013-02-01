@@ -45,6 +45,7 @@ import android.util.SparseArray;
 import com.android.dx.dex.DexFormat;
 import com.android.dx.dex.SizeOf;
 import com.android.dx.dex.TableOfContents;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.merge.TypeList;
 import com.android.dx.util.ByteInput;
 import com.android.dx.util.ByteOutput;

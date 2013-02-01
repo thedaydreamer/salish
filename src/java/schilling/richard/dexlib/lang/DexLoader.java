@@ -18,7 +18,6 @@ import schilling.richard.dexlib.io.deserialize.ClassDefItem;
 import schilling.richard.dexlib.io.deserialize.TypeIdItem;
 import schilling.richard.dexlib.io.deserialize.TypeListItem;
 import schilling.richard.dexlib.io.util.AccessFlags;
-import schilling.richard.r3.app.FinnrApp;
 import android.util.Log;
 
 /**

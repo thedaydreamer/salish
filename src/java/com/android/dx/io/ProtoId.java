@@ -36,6 +36,7 @@ import schilling.richard.dalvik.vm.analysis.RegisterType;
 import schilling.richard.dalvik.vm.oo.VerifyException;
 import schilling.richard.dalvik.vm.oo.util.ClassPathUtil;
 
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.util.Unsigned;
 
 public final class ProtoId implements Comparable<ProtoId> {

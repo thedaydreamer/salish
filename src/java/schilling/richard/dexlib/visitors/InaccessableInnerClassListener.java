@@ -6,19 +6,10 @@ import java.util.List;
 
 import org.gnu.salish.visitors.DexFileListener;
 
-import schilling.richard.dalvik.vm.InstructionList;
 import schilling.richard.dexlib.proxy.AUTGenerator;
-import schilling.richard.dexlib.proxy.ProxyMap;
-import schilling.richard.r3.app.Enhance;
 import android.util.Log;
 
-import com.android.dx.io.ClassData.Method;
 import com.android.dx.io.ClassDef;
-import com.android.dx.io.Code;
-import com.android.dx.io.DexBuffer;
-import com.android.dx.io.MethodId;
-import com.android.dx.io.ProtoId;
-import com.android.dx.io.instructions.DecodedInstruction;
 
 /**
  * Discovers what classes are inaccessable because they have inaccessable inner

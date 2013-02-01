@@ -14,7 +14,6 @@ import java.util.zip.ZipOutputStream;
 
 import org.apache.http.util.ByteArrayBuffer;
 
-import schilling.richard.r3.app.FinnrApp;
 import android.util.Log;
 
 /**

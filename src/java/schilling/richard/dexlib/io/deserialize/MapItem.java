@@ -32,7 +32,6 @@ import schilling.richard.dexlib.io.AnnotatedOutput;
 import schilling.richard.dexlib.io.DexFile;
 import schilling.richard.dexlib.io.ReadContext;
 import schilling.richard.io.Input;
-import schilling.richard.r3.app.FinnrApp;
 import android.util.Log;
 
 /**

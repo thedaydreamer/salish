@@ -18,6 +18,7 @@ package com.android.dx.io.instructions;
 // TODO: put all register verification code in separate classes so it can be managed properly.  Keep it separate from the code that actually sets register types.
 import static com.android.dx.io.opcode.Opcodes.FILLED_NEW_ARRAY_JUMBO;
 import static com.android.dx.io.opcode.Opcodes.FILLED_NEW_ARRAY_RANGE;
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.constTypeToRegType;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeAnyCategory2;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeBoolean;
@@ -29,7 +30,6 @@ import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeShort;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeUnknown;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeZero;
-import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 
 import java.io.EOFException;
 import java.util.List;
@@ -54,11 +54,11 @@ import com.android.dx.io.ClassData;
 import com.android.dx.io.ClassDef;
 import com.android.dx.io.Code;
 import com.android.dx.io.Code.CatchHandler;
-import com.android.dx.io.DexBuffer;
 import com.android.dx.io.FieldId;
 import com.android.dx.io.IndexType;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.io.opcode.OpcodeInfo;
 import com.android.dx.io.opcode.Opcodes;
 import com.android.dx.io.opcode.RegisterReference;

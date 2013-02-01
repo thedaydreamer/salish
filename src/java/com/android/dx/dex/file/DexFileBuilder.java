@@ -1,8 +1,9 @@
 
 package com.android.dx.dex.file;
 
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
+
 import java.util.Iterator;
-import static org.gnu.salish.debug.util.DebugConstants.*;
 import java.util.List;
 
 import android.util.Log;
@@ -12,10 +13,10 @@ import com.android.dx.dex.DexOptions;
 import com.android.dx.io.ClassData;
 import com.android.dx.io.ClassData.Method;
 import com.android.dx.io.ClassDef;
-import com.android.dx.io.DexBuffer;
 import com.android.dx.io.FieldId;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.rop.cst.CstFieldRef;
 import com.android.dx.rop.cst.CstMethodRef;
 import com.android.dx.rop.cst.CstNat;

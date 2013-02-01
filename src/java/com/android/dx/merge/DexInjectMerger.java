@@ -25,15 +25,14 @@ import java.util.List;
 import schilling.richard.dalvik.vm.analysis.DexSwapVerify;
 import schilling.richard.dalvik.vm.oo.VerifyException;
 import schilling.richard.dexlib.inject.InjectException;
-import schilling.richard.r3.app.FinnrApp;
 import android.util.Log;
 import android.util.SparseIntArray;
 
 import com.android.dx.io.ClassData;
 import com.android.dx.io.ClassDef;
 import com.android.dx.io.Code;
-import com.android.dx.io.DexBuffer;
 import com.android.dx.io.MethodId;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.io.instructions.DecodedInstruction;
 import com.android.dx.io.opcode.Opcodes;
 import com.android.dx.merge.Updater.BaseUpdater;

@@ -6,7 +6,7 @@ import schilling.richard.dexlib.visitors.ReloadAllReferencedHashesListener;
 import schilling.richard.dexlib.visitors.ReloadDexDefinedHasesListener;
 import android.util.SparseArray;
 
-import com.android.dx.io.DexBuffer;
+import com.android.dx.io.dexbuffer.DexBuffer;
 
 public class DexBufferHashes {
 	/**

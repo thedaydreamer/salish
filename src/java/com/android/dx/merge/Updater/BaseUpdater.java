@@ -6,8 +6,8 @@ import java.util.List;
 
 import schilling.richard.dexlib.inject.InjectUtil;
 
-import com.android.dx.io.DexBuffer;
 import com.android.dx.io.MethodId;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.merge.DexInjectMerger.ClassMethodPair;
 import com.android.dx.merge.MethodDefinition;
 

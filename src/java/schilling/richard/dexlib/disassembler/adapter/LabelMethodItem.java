@@ -31,7 +31,6 @@ package schilling.richard.dexlib.disassembler.adapter;
 import java.io.IOException;
 
 import schilling.richard.io.IndentingWriter;
-import schilling.richard.r3.app.FinnrApp;
 
 public class LabelMethodItem extends MethodItem {
 	private final String labelPrefix;

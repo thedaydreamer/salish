@@ -1,6 +1,5 @@
 package schilling.richard.dexlib.inject;
 
-import schilling.richard.r3.app.port.FinnrException;
 
 public class InjectException extends FinnrException {
 

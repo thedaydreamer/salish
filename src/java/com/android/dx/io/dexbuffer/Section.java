@@ -23,6 +23,7 @@ import com.android.dx.util.DexException;
 import com.android.dx.util.Leb128Utils;
 import com.android.dx.util.Mutf8;
 
+// TODO Refactor Section to a better name
 /**
  * Points to a region of the buffer. Reads and writes data to it.
  * 

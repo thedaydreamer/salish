@@ -1,10 +1,10 @@
 
 package com.android.dx.io.opcode.verify;
 
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeFloat;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeInteger;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeUnknown;
-import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 import schilling.richard.dalvik.vm.CodeVerifyConstants;
 import schilling.richard.dalvik.vm.PrimitiveType;
 import schilling.richard.dalvik.vm.analysis.RegisterCategory;

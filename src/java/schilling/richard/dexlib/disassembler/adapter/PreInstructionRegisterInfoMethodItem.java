@@ -29,11 +29,6 @@
 package schilling.richard.dexlib.disassembler.adapter;
 
 
-import static schilling.richard.r3.app.util.RegisterPreferenceEnum.ALL;
-import static schilling.richard.r3.app.util.RegisterPreferenceEnum.ALLPRE;
-import static schilling.richard.r3.app.util.RegisterPreferenceEnum.ARGS;
-import static schilling.richard.r3.app.util.RegisterPreferenceEnum.FULLMERGE;
-import static schilling.richard.r3.app.util.RegisterPreferenceEnum.MERGE;
 import java.io.IOException;
 import java.util.BitSet;
 
@@ -47,7 +42,6 @@ import schilling.richard.dexlib.Code.Analysis.MethodAnalyzer;
 import schilling.richard.dexlib.io.deserialize.ClassDataItem;
 import schilling.richard.dexlib.io.util.AccessFlags;
 import schilling.richard.io.IndentingWriter;
-import schilling.richard.r3.app.FinnrApp;
 
 public class PreInstructionRegisterInfoMethodItem extends MethodItem {
 	private final AnalyzedInstruction analyzedInstruction;

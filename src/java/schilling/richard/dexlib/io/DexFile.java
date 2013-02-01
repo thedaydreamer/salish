@@ -43,7 +43,6 @@ import schilling.richard.dexlib.util.AlignmentUtils;
 import schilling.richard.io.ByteArrayInput;
 import schilling.richard.io.Input;
 import schilling.richard.io.util.Hex;
-import schilling.richard.r3.app.FinnrApp;
 import schilling.richard.util.FileUtils;
 import android.util.Log;
 

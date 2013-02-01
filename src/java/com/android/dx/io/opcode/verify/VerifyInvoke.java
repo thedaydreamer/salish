@@ -1,10 +1,10 @@
 
 package com.android.dx.io.opcode.verify;
 
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 import static schilling.richard.dalvik.vm.oo.MethodType.METHOD_DIRECT;
 import static schilling.richard.dalvik.vm.oo.MethodType.METHOD_STATIC;
 import static schilling.richard.dalvik.vm.oo.MethodType.METHOD_VIRTUAL;
-import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 
 import java.util.List;
 
@@ -19,9 +19,9 @@ import android.util.Log;
 import com.android.dx.io.ClassData;
 import com.android.dx.io.ClassData.Method;
 import com.android.dx.io.ClassDef;
-import com.android.dx.io.DexBuffer;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.io.instructions.DecodedInstruction;
 
 public abstract class VerifyInvoke implements OpcodeVerifier {

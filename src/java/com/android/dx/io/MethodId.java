@@ -32,6 +32,7 @@ import java.util.List;
 import schilling.richard.dalvik.vm.analysis.RegisterType;
 import schilling.richard.dalvik.vm.oo.VerifyException;
 
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.util.Unsigned;
 
 public final class MethodId implements Comparable<MethodId> {

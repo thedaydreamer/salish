@@ -33,7 +33,6 @@ import java.io.IOException;
 import schilling.richard.dexlib.io.deserialize.CodeItem;
 import schilling.richard.dexlib.io.util.AccessFlags;
 import schilling.richard.io.IndentingWriter;
-import schilling.richard.r3.app.FinnrApp;
 
 /**
  * This class contains the logic used for formatting registers

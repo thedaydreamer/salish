@@ -25,6 +25,7 @@ import java.util.List;
 import android.util.Log;
 
 import com.android.dx.dex.TableOfContents;
+import com.android.dx.io.dexbuffer.DexBuffer;
 
 /**
  * Executable that prints all indices of a dex file.

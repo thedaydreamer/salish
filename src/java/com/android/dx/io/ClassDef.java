@@ -25,6 +25,7 @@ import schilling.richard.dalvik.vm.PrimitiveType;
 import schilling.richard.dalvik.vm.oo.util.ClassDefFactory;
 import schilling.richard.dalvik.vm.oo.util.ClassLoaderUtil;
 
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.rop.code.AccessFlags;
 
 /**

@@ -21,6 +21,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.zip.Adler32;
 
+import com.android.dx.io.dexbuffer.DexBuffer;
+
 /**
  * Generates and stores the checksum and signature of a dex file.
  */

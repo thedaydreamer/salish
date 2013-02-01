@@ -13,7 +13,7 @@ import java.util.zip.ZipFile;
 import schilling.richard.dexlib.io.DexFile.NoClassesDexException;
 import schilling.richard.util.FileUtils;
 
-import com.android.dx.io.DexBuffer;
+import com.android.dx.io.dexbuffer.DexBuffer;
 
 public final class ApkFile {
 

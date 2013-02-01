@@ -16,7 +16,7 @@
 
 package com.android.dx.merge;
 
-import com.android.dx.io.DexBuffer;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.util.Unsigned;
 
 public final class TypeList implements Comparable<TypeList> {

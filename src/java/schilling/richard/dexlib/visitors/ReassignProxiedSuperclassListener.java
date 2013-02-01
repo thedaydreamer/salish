@@ -7,7 +7,6 @@ import java.util.List;
 import org.gnu.salish.visitors.DexFileListener;
 
 import schilling.richard.dalvik.vm.InstructionList;
-import schilling.richard.r3.app.Enhance;
 import android.util.Log;
 import android.util.SparseArray;
 
@@ -15,9 +14,9 @@ import com.android.dx.dex.SizeOf;
 import com.android.dx.io.ClassData.Method;
 import com.android.dx.io.ClassDef;
 import com.android.dx.io.Code;
-import com.android.dx.io.DexBuffer;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.io.instructions.DecodedInstruction;
 
 public class ReassignProxiedSuperclassListener extends DexFileListener {

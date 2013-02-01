@@ -16,13 +16,13 @@
 
 package com.android.dx.io.opcode.format;
 
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeAnyCategory2;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeByte;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeConstLo;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeInteger;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeRef;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeUnknown;
-import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 
 import java.io.EOFException;
 import java.util.EnumSet;

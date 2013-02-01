@@ -58,7 +58,6 @@ import schilling.richard.dexlib.io.deserialize.StringIdItem;
 import schilling.richard.dexlib.io.deserialize.TypeIdItem;
 import schilling.richard.dexlib.io.util.AccessFlags;
 import schilling.richard.io.IndentingWriter;
-import schilling.richard.r3.app.FinnrApp;
 import android.util.SparseIntArray;
 
 public class MethodDefinition {

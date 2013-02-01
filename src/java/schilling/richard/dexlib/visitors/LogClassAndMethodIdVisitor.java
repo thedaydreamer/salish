@@ -8,9 +8,9 @@ import android.util.Log;
 import com.android.dx.io.ClassData.Method;
 import com.android.dx.io.ClassDef;
 import com.android.dx.io.Code;
-import com.android.dx.io.DexBuffer;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.io.instructions.DecodedInstruction;
 
 public class LogClassAndMethodIdVisitor extends DexFileListener {

@@ -1,8 +1,8 @@
 
 package com.android.dx.io.opcode.regtype;
 
-import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeUnknown;
 import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
+import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeUnknown;
 import schilling.richard.dalvik.vm.analysis.CodeVerify;
 import schilling.richard.dalvik.vm.analysis.RegisterType;
 import schilling.richard.dalvik.vm.analysis.RegisterTypeSparseArray;

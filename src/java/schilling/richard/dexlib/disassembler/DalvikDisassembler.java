@@ -26,7 +26,6 @@ import schilling.richard.dexlib.io.DexFile;
 import schilling.richard.dexlib.io.deserialize.ClassDefItem;
 import schilling.richard.dexlib.lang.DexLoader;
 import schilling.richard.io.IndentingWriter;
-import schilling.richard.r3.app.FinnrApp;
 import schilling.richard.util.FileSystemUtil;
 import schilling.richard.util.FileUtils;
 import android.content.Context;

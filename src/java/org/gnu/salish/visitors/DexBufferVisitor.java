@@ -37,7 +37,6 @@ import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
 import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.io.dexbuffer.DexBufferRandomAccessFile;
-import com.android.dx.io.dexbuffer.DexBuffer.BufferedStringIdItem;
 
 /**
  * Visits artifacts in a dex buffer. The current version only visits methods.

@@ -1,9 +1,10 @@
 
 package com.android.dx.io.dexbuffer;
 
+import static com.android.dx.io.dexbuffer.DexBufferRandomAccessFile.SEMAPHORE;
+
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import static com.android.dx.io.dexbuffer.DexBufferRandomAccessFile.SEMAPHORE;
 
 public final class SectionFile extends Section {
     // TODO research the semantics of multiple RandomAccessFile objects using

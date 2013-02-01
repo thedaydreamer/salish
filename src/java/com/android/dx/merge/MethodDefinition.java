@@ -1,6 +1,7 @@
 
 package com.android.dx.merge;
 
+import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeBoolean;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeByte;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeChar;
@@ -12,7 +13,6 @@ import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeLongLo;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeRef;
 import static schilling.richard.dalvik.vm.analysis.RegisterType.RegisterTypeEnum.kRegTypeShort;
-import static org.gnu.salish.debug.util.DebugConstants.DO_LOG;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -37,10 +37,10 @@ import com.android.dx.io.ClassDef;
 import com.android.dx.io.Code;
 import com.android.dx.io.Code.CatchHandler;
 import com.android.dx.io.Code.Try;
-import com.android.dx.io.DexBuffer;
 import com.android.dx.io.IndexType;
 import com.android.dx.io.MethodId;
 import com.android.dx.io.ProtoId;
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.io.instructions.DecodedInstruction;
 import com.android.dx.io.instructions.DecodedInstructionFactory;
 import com.android.dx.io.instructions.PackedSwitchPayloadDecodedInstruction;

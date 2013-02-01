@@ -16,6 +16,7 @@
 
 package com.android.dx.io;
 
+import com.android.dx.io.dexbuffer.DexBuffer;
 import com.android.dx.util.Unsigned;
 
 /**
