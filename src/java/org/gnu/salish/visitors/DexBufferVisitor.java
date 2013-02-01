@@ -247,29 +247,9 @@ public class DexBufferVisitor {
 
     }
 
-    /**
-     * Visits all string ids and the strings that they point to.
-     */
-    public void visitStrings() {
-        List<BufferedStringIdItem> stringIdItems = buffer.bufferedStringIdItems;
-        for (int i = 0; i < stringIdItems.size(); i++){
-            BufferedStringIdItem item = stringIdItems.get(i);
-            
-            int offset = item.getOffset();
-            int stringOffset = item.getStringOffset();
-            
-        }
-        for (BufferedStringIdItem idItem : stringIdItems) {
-            
-            idItem.g
-        }
-
-    }
-
     // TODO add visits to other parts of the DEX file.
     public void visitAll() throws InterruptedException {
 
-        visitStrings();
         visitClasses();
 
     }
