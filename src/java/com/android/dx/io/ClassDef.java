@@ -20,11 +20,6 @@ import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 
-import schilling.richard.dalvik.vm.DvmGlobals;
-import schilling.richard.dalvik.vm.PrimitiveType;
-import schilling.richard.dalvik.vm.oo.util.ClassDefFactory;
-import schilling.richard.dalvik.vm.oo.util.ClassLoaderUtil;
-
 import com.android.dx.rop.code.AccessFlags;
 
 /**
