@@ -1,0 +1,16 @@
+This package contains an in memory model of DEX file elements. It aims
+to be as simple as possible and not try to track the values of the DEX
+file that really should be calculated based on underlying data (e.g.
+class structures)
+
+<h3>Overall File Layout</h3>
+See the corresponding section in the web page
+http://source.android.com/tech/dalvik/dex-format.html
+
+<pre>
+header: all values are calculated by reading the model state.
+string_ids: built from DexBufferBuilder.strings.  All strings sorted in their natural order
+type_ids: built from DexBufferBuilder.types
+proto_ids: created by calls to Method.getProtoId().
+
+</pre>
